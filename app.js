@@ -1,30 +1,269 @@
-const $=s=>document.querySelector(s);
-const courts=[{name:'Quadra 01',sport:'Vôlei',price:100},{name:'Quadra 02',sport:'Beach tennis',price:120},{name:'Quadra 03',sport:'Futsal',price:150}];
-const hours=Array.from({length:9},(_,i)=>i+14);
-const localDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const today=localDate(new Date());let day=today,view='admin',filter='all',selectedId=null,counter=20;
-const bookings=[{id:1,court:0,hour:14,name:'Marina Costa',status:'confirmed',paid:true},{id:2,court:1,hour:15,name:'Bruno Almeida',status:'confirmed',paid:true},{id:3,court:2,hour:16,name:'Equipe Resenha',status:'confirmed',paid:false},{id:4,court:0,hour:17,name:'Turma do vôlei',status:'confirmed',paid:true},{id:5,court:1,hour:18,name:'Camila Santos',status:'pending',paid:false},{id:6,court:0,hour:19,name:'Julian Matheus',status:'pending',paid:false},{id:7,court:2,hour:20,name:'Amigos da bola',status:'confirmed',paid:true}].map(b=>({...b,date:today}));
-const money=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labelDate=d=>new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{day:'numeric',month:'long'});
-const getBooking=(court,hour)=>bookings.find(b=>b.date===day&&b.court===court&&b.hour===hour);
-function toast(message){$('#toast').textContent=message;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',4200)}
-function setView(v){view=v;render()}
-function render(){
- $('#date').value=day;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
- const admin=view==='admin';$('#crumb').textContent=admin?'Agenda e reservas':'Visão do jogador';$('#eyebrow').textContent=admin?'CONTROLE DA ARENA':'ARENA VILA · PORTO VELHO';$('#title').textContent=admin?'Bom jogo começa com uma boa agenda.':'Seu próximo jogo começa aqui.';$('#subtitle').textContent=admin?'Todos os horários. Cada reserva. Tudo no seu lugar.':'Escolha a quadra, encontre seu horário e solicite uma reserva.';$('#newBooking').textContent=admin?'＋ Nova reserva':'＋ Solicitar reserva';$('#workspaceTitle').textContent=admin?'Agenda de quadras':'Encontre seu horário';$('#workspaceSubtitle').textContent=admin?'Selecione um horário para reservar ou ver os detalhes.':'Cada reserva dura 1 hora. Aguarde a confirmação da arena.';
- const list=bookings.filter(b=>b.date===day);const confirmed=list.filter(b=>b.status==='confirmed');const pending=list.filter(b=>b.status==='pending');
- $('#stats').innerHTML=(admin?[['Reservas do dia',list.length,'Confirmadas e aguardando','▦'],['Ocupação',Math.round(confirmed.length/27*100)+'%','Dos 27 horários disponíveis','◷'],['Recebido',money(list.filter(b=>b.paid).reduce((n,b)=>n+courts[b.court].price,0)),'Pagamentos registrados','↗'],['A confirmar',pending.length,'Solicitações aguardando você','◌']]:[['Quadras',3,'Três espaços para jogar','▦'],['Duração','1 hora','Por reserva','◷'],['A partir de',money(100),'Por quadra / hora','↗'],['Horários livres',27-list.length,'Na data selecionada','◌']]).map((s,i)=>`<div class="stat ${i===2?'featured':''}"><div class="stat-label">${s[0]}<span class="stat-symbol" aria-hidden="true">${s[3]}</span></div><strong>${s[1]}</strong><small>${s[2]}</small></div>`).join('');
- const cols=courts.map((c,i)=>({...c,i})).filter(c=>filter==='all'||String(c.i)===filter);
- $('#schedule').style.setProperty('--cols',cols.length);
- $('#schedule').innerHTML=`<div class="grid-head"><span></span>${cols.map(c=>`<div class="court-head"><strong>${c.name}</strong><small>${c.sport} · ${money(c.price)}/h</small></div>`).join('')}</div>`+hours.map(h=>`<div class="time-row"><div class="hour">${h}:00</div>${cols.map(c=>{const b=getBooking(c.i,h);return `<button class="slot ${b?(b.status==='pending'?'waiting':'booked'):''} ${b&&!admin?'blocked':''}" data-court="${c.i}" data-hour="${h}" ${b&&!admin?'disabled':''} aria-label="${esc(c.name+' às '+h+' horas, '+(b?'ocupado':'disponível'))}"><strong>${b?(admin?esc(b.name):'Indisponível'):'+ Reservar'}</strong><small>${b?(admin?(b.status==='pending'?'A confirmar':b.paid?'Confirmada · Pago':'Confirmada · A pagar'):'Horário ocupado'):'Disponível'}</small></button>`}).join('')}</div>`).join('');
- $('#dateCaption').textContent=labelDate(day);$('#bottom').hidden=!admin;$('#bottom').style.display=admin?'grid':'none';$('#pendingCount').textContent=pending.length;
- $('#requests').innerHTML=pending.length?pending.map(b=>`<div class="request-row"><span class="avatar">${esc(b.name.split(' ').map(s=>s[0]).slice(0,2).join(''))}</span><div><strong>${esc(b.name)}</strong><small>${courts[b.court].name} · ${b.hour}:00–${b.hour+1}:00 · ${money(courts[b.court].price)}</small></div><button data-detail="${b.id}">Ver solicitação</button></div>`).join(''):'<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
+const $ = (selector) => document.querySelector(selector);
+
+const courts = [
+  { name: 'Quadra 01', sport: 'Vôlei', price: 100 },
+  { name: 'Quadra 02', sport: 'Beach tennis', price: 120 },
+  { name: 'Quadra 03', sport: 'Futsal', price: 150 }
+];
+const hours = Array.from({ length: 9 }, (_, index) => index + 14);
+const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const today = localDate(new Date());
+
+let day = today;
+let view = 'admin';
+let filter = 'all';
+let selectedId = null;
+let counter = 20;
+let profitPeriod = 'day';
+
+const bookings = [
+  { id: 1, court: 0, hour: 14, duration: 1, name: 'Marina Costa', phone: '(69) 99999-1001', status: 'confirmed', paid: true },
+  { id: 2, court: 1, hour: 15, duration: 2, name: 'Bruno Almeida', phone: '(69) 99999-1002', status: 'confirmed', paid: true },
+  { id: 3, court: 2, hour: 16, duration: 1, name: 'Equipe Resenha', phone: '(69) 99999-1003', status: 'confirmed', paid: false },
+  { id: 4, court: 0, hour: 17, duration: 1, name: 'Turma do vôlei', phone: '(69) 99999-1004', status: 'confirmed', paid: true },
+  { id: 5, court: 1, hour: 18, duration: 1, name: 'Camila Santos', phone: '(69) 99999-1005', status: 'pending', paid: false },
+  { id: 6, court: 0, hour: 19, duration: 1, name: 'Julian Matheus', phone: '(69) 99999-1006', status: 'pending', paid: false },
+  { id: 7, court: 2, hour: 20, duration: 1, name: 'Amigos da bola', phone: '(69) 99999-1007', status: 'confirmed', paid: true }
+].map((booking) => ({ ...booking, date: today }));
+
+const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+const labelDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+const getBooking = (court, hour, date = day) => bookings.find((booking) => booking.date === date && booking.court === court && hour >= booking.hour && hour < booking.hour + booking.duration);
+
+function toast(message) {
+  $('#toast').textContent = message;
+  $('#toast').style.display = 'block';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { $('#toast').style.display = 'none'; }, 4200);
 }
-function updateHours(preferred){const c=Number($('#bookingCourt').value);const free=hours.filter(h=>!getBooking(c,h));$('#bookingHour').innerHTML=free.length?free.map(h=>`<option value="${h}">${h}:00 – ${h+1}:00</option>`).join(''):'<option value="">Sem horários livres</option>';if(free.includes(preferred))$('#bookingHour').value=String(preferred);$('#price').textContent=money(courts[c].price);$('#submitBooking').disabled=!free.length}
-function openBooking(c=0,h){selectedId=null;$('#bookingForm').reset();$('#formError').textContent='';$('#formFields').hidden=false;$('#detailContent').innerHTML='';$('#dialogTitle').textContent=view==='admin'?'Nova reserva':'Solicitar reserva';$('#dialogInfo').textContent=labelDate(day)+' · Arena Vila';$('#bookingCourt').value=String(c);$('#dialogActions').innerHTML=`<button class="primary" type="submit" id="submitBooking">${view==='admin'?'Confirmar reserva':'Solicitar horário'}</button>`;updateHours(h);$('#bookingDialog').showModal()}
-function openDetail(id){const b=bookings.find(b=>b.id===id);if(!b||view!=='admin')return;selectedId=id;$('#formError').textContent='';$('#formFields').hidden=true;$('#dialogTitle').textContent=b.status==='pending'?'Solicitação de reserva':'Detalhes da reserva';$('#dialogInfo').textContent=`${labelDate(b.date)} · ${b.hour}:00–${b.hour+1}:00`;$('#detailContent').innerHTML=`<p><strong>${esc(b.name)}</strong></p><p>${courts[b.court].name} · ${courts[b.court].sport}</p><p>Status: ${b.status==='pending'?'Aguardando confirmação':'Confirmada'}<br>Pagamento: ${b.paid?'Recebido':'Pendente'}</p>`;$('#price').textContent=money(courts[b.court].price);$('#dialogActions').innerHTML=(b.status==='pending'?'<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>':!b.paid?'<button type="button" class="primary" data-action="pay">Registrar pagamento</button>':'')+'<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';if(!$('#bookingDialog').open)$('#bookingDialog').showModal()}
-$('#bookingForm').addEventListener('submit',e=>{e.preventDefault();if(selectedId!==null)return;const c=Number($('#bookingCourt').value),raw=$('#bookingHour').value,h=Number(raw),name=$('#customer').value.trim();if(!name){$('#formError').textContent='Informe o nome do responsável.';return}if(raw===''||!hours.includes(h)||!courts[c]||getBooking(c,h)){$('#formError').textContent='Este horário não está disponível. Escolha outro.';return}bookings.push({id:++counter,date:day,court:c,hour:h,name,status:view==='admin'?'confirmed':'pending',paid:false});$('#bookingDialog').close();render();toast(view==='admin'?'Reserva confirmada na demonstração.':'Solicitação enviada! Veja a confirmação na visão de gestão.');});
-$('#dialogActions').addEventListener('click',e=>{const action=e.target.dataset.action,b=bookings.find(b=>b.id===selectedId);if(!action||!b)return;if(action==='confirm'){b.status='confirmed';toast('Reserva confirmada.')}if(action==='pay'){b.paid=true;toast('Pagamento registrado na demonstração.')}if(action==='cancel'){if(!confirm('Cancelar esta reserva de demonstração e liberar o horário?'))return;bookings.splice(bookings.indexOf(b),1);toast('Reserva cancelada. Horário disponível novamente.')}$('#bookingDialog').close();render()});
-$('#bookingCourt').addEventListener('change',()=>updateHours());$('#closeDialog').onclick=()=>$('#bookingDialog').close();$('#newBooking').onclick=()=>openBooking(filter==='all'?0:Number(filter));$('#seePlayer').onclick=()=>{setView('player');window.scrollTo({top:0,behavior:'smooth'})};document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#schedule').addEventListener('click',e=>{const btn=e.target.closest('[data-court]');if(!btn)return;const c=Number(btn.dataset.court),h=Number(btn.dataset.hour),b=getBooking(c,h);b?openDetail(b.id):openBooking(c,h)});$('#requests').addEventListener('click',e=>{const b=e.target.closest('[data-detail]');if(b)openDetail(Number(b.dataset.detail))});$('#courtFilter').onchange=e=>{filter=e.target.value;render()};$('#date').onchange=e=>{if(e.target.value){day=e.target.value;render()}};function moveDay(n){const d=new Date(day+'T12:00:00');d.setDate(d.getDate()+n);day=localDate(d);render()}$('#prevDay').onclick=()=>moveDay(-1);$('#nextDay').onclick=()=>moveDay(1);$('#today').onclick=()=>{day=today;render()};render();
-if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'change_booking_view',title:'Alterar visão da agenda',description:'Abre a visão do administrador ou do jogador no protótipo, sem criar reservas.',inputSchema:{type:'object',properties:{view:{type:'string',enum:['admin','player']}},required:['view'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input){if(!input||!['admin','player'].includes(input.view))throw new Error('Visão inválida');setView(input.view);return{view,title:$('#title').textContent}}})).catch(()=>{})}catch{}}
+
+function ensureEnhancements() {
+  const customer = $('#customer');
+  if (customer && !$('#customerPhone')) {
+    const phoneLabel = document.createElement('label');
+    phoneLabel.innerHTML = 'Celular do responsável<input name="phone" id="customerPhone" required maxlength="20" placeholder="Ex.: (69) 99999-9999" autocomplete="tel" inputmode="tel">';
+    customer.closest('label').after(phoneLabel);
+  }
+  if ($('#bookingHour') && !$('#bookingDuration')) {
+    const durationLabel = document.createElement('label');
+    durationLabel.innerHTML = 'Duração<select id="bookingDuration" name="duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select>';
+    $('#bookingHour').closest('label').after(durationLabel);
+  }
+  if (!$('#profitPanel')) {
+    const panel = document.createElement('section');
+    panel.id = 'profitPanel';
+    panel.style.cssText = 'margin:0 0 27px;background:#fff;border:1px solid #e1e7e3;border-radius:13px;padding:22px 25px;';
+    $('#stats').after(panel);
+  }
+}
+
+function periodBookings(period) {
+  const reference = new Date(day + 'T12:00:00');
+  return bookings.filter((booking) => {
+    const bookingDate = new Date(booking.date + 'T12:00:00');
+    const difference = Math.round((reference - bookingDate) / 86400000);
+    if (period === 'day') return difference === 0;
+    if (period === 'week') return difference >= 0 && difference < 7;
+    return difference >= 0 && difference < 30;
+  });
+}
+
+function renderProfitPanel(list) {
+  const panel = $('#profitPanel');
+  if (!panel) return;
+  if (view !== 'admin') { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  const paid = list.filter((booking) => booking.paid);
+  const pending = list.filter((booking) => !booking.paid);
+  const total = paid.reduce((sum, booking) => sum + courts[booking.court].price * booking.duration, 0);
+  const expected = list.reduce((sum, booking) => sum + courts[booking.court].price * booking.duration, 0);
+  const periodLabel = { day: 'Hoje', week: 'Esta semana', month: 'Este mês' }[profitPeriod];
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
+      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Valores calculados automaticamente a partir das reservas e pagamentos.</p></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px">
+      <div style="background:#eaf3df;border-radius:9px;padding:14px"><small>Recebido · ${periodLabel}</small><strong style="display:block;font-size:24px;margin-top:7px">${money(total)}</strong></div>
+      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:24px;margin-top:7px">${money(expected)}</strong></div>
+      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Reservas pagas</small><strong style="display:block;font-size:24px;margin-top:7px">${paid.length}</strong></div>
+      <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Aguardando pagamento</small><strong style="display:block;font-size:24px;margin-top:7px">${pending.length}</strong></div>
+    </div>`;
+  panel.querySelectorAll('[data-profit-period]').forEach((button) => {
+    button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
+  });
+}
+
+function setView(nextView) { view = nextView; render(); }
+
+function render() {
+  ensureEnhancements();
+  $('#date').value = day;
+  document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
+  const admin = view === 'admin';
+  $('#crumb').textContent = admin ? 'Agenda e reservas' : 'Visão do jogador';
+  $('#eyebrow').textContent = admin ? 'CONTROLE DA ARENA' : 'ARENA VILA · PORTO VELHO';
+  $('#title').textContent = admin ? 'Bom jogo começa com uma boa agenda.' : 'Seu próximo jogo começa aqui.';
+  $('#subtitle').textContent = admin ? 'Todos os horários. Cada reserva. Tudo no seu lugar.' : 'Escolha a quadra, encontre seu horário e solicite uma reserva.';
+  $('#newBooking').textContent = admin ? '＋ Nova reserva' : '＋ Solicitar reserva';
+  $('#workspaceTitle').textContent = admin ? 'Agenda de quadras' : 'Encontre seu horário';
+  $('#workspaceSubtitle').textContent = admin ? 'Selecione um horário para reservar ou ver os detalhes.' : 'Escolha a duração e informe seus dados para reservar.';
+  const list = bookings.filter((booking) => booking.date === day);
+  const confirmed = list.filter((booking) => booking.status === 'confirmed');
+  const pending = list.filter((booking) => booking.status === 'pending');
+  const occupiedHours = list.reduce((sum, booking) => sum + booking.duration, 0);
+  $('#stats').innerHTML = (admin
+    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / 27 * 100) + '%', 'Dos 27 horários disponíveis', '◷'], ['Recebido', money(list.filter((booking) => booking.paid).reduce((sum, booking) => sum + courts[booking.court].price * booking.duration, 0)), 'Pagamentos registrados', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
+    : [['Quadras', 3, 'Três espaços para jogar', '▦'], ['Duração', '1 a 3 horas', 'Você escolhe no pedido', '◷'], ['A partir de', money(100), 'Por quadra / hora', '↗'], ['Horários livres', 27 - occupiedHours, 'Na data selecionada', '◌']])
+    .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
+  renderProfitPanel(periodBookings(profitPeriod));
+
+  const columns = courts.map((court, index) => ({ ...court, index })).filter((court) => filter === 'all' || String(court.index) === filter);
+  $('#schedule').style.setProperty('--cols', columns.length);
+  $('#schedule').innerHTML = `<div class="grid-head"><span></span>${columns.map((court) => `<div class="court-head"><strong>${court.name}</strong><small>${court.sport} · ${money(court.price)}/h</small></div>`).join('')}</div>` +
+    hours.map((hour) => `<div class="time-row"><div class="hour">${hour}:00</div>${columns.map((court) => {
+      const booking = getBooking(court.index, hour);
+      const label = booking ? (admin ? esc(booking.name) : 'Indisponível') : '+ Reservar';
+      const detail = booking ? (admin ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : 'Confirmada · A pagar') : 'Horário ocupado') : 'Disponível';
+      return `<button class="slot ${booking ? (booking.status === 'pending' ? 'waiting' : 'booked') : ''} ${booking && !admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" ${booking && !admin ? 'disabled' : ''}><strong>${label}</strong><small>${detail}</small></button>`;
+    }).join('')}</div>`).join('');
+  $('#dateCaption').textContent = labelDate(day);
+  $('#bottom').hidden = !admin;
+  $('#bottom').style.display = admin ? 'grid' : 'none';
+  $('#pendingCount').textContent = pending.length;
+  $('#requests').innerHTML = pending.length
+    ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${courts[booking.court].name} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${money(courts[booking.court].price * booking.duration)}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
+    : '<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
+}
+
+function updateHours(preferred) {
+  const court = Number($('#bookingCourt').value);
+  const duration = Number($('#bookingDuration')?.value || 1);
+  const free = hours.filter((hour) => Array.from({ length: duration }, (_, offset) => getBooking(court, hour + offset)).every((booking) => !booking) && hour + duration <= 23);
+  $('#bookingHour').innerHTML = free.length ? free.map((hour) => `<option value="${hour}">${hour}:00 – ${hour + duration}:00</option>`).join('') : '<option value="">Sem horários livres</option>';
+  if (free.includes(preferred)) $('#bookingHour').value = String(preferred);
+  $('#price').textContent = money(courts[court].price * duration);
+  const label = document.querySelector('.price-line span');
+  if (label) label.textContent = `Total · ${duration} hora${duration > 1 ? 's' : ''}`;
+  $('#submitBooking').disabled = !free.length;
+}
+
+function openBooking(court = 0, hour, duration = 1) {
+  selectedId = null;
+  $('#bookingForm').reset();
+  $('#formError').textContent = '';
+  $('#formFields').hidden = false;
+  $('#detailContent').innerHTML = '';
+  $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
+  $('#dialogInfo').textContent = labelDate(day) + ' · Arena Vila';
+  $('#bookingCourt').value = String(court);
+  $('#bookingDuration').value = String(duration);
+  $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Confirmar horário'}</button>`;
+  updateHours(hour);
+  $('#bookingDialog').showModal();
+}
+
+function openDetail(id) {
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking || view !== 'admin') return;
+  selectedId = id;
+  $('#formError').textContent = '';
+  $('#formFields').hidden = true;
+  $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação de reserva' : 'Detalhes da reserva';
+  $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
+  $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${courts[booking.court].name} · ${courts[booking.court].sport} · ${booking.duration} hora${booking.duration > 1 ? 's' : ''}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${booking.paid ? 'Recebido' : 'Pendente'}</p>`;
+  $('#price').textContent = money(courts[booking.court].price * booking.duration);
+  $('#dialogActions').innerHTML = (booking.status === 'pending' ? '<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>' : !booking.paid ? '<button type="button" class="primary" data-action="pay">Registrar pagamento</button>' : '') + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
+  if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+}
+
+function showConfirmation(booking) {
+  $('#formFields').hidden = true;
+  $('#dialogTitle').textContent = 'Horário reservado!';
+  $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Guarde estas informações e chegue com alguns minutos de antecedência.</p></div><p><strong>Observações</strong></p><p>• A reserva dura ${booking.duration} hora${booking.duration > 1 ? 's' : ''}.<br>• Em uma versão real, o pagamento PIX será validado automaticamente.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
+  $('#price').textContent = money(courts[booking.court].price * booking.duration);
+  $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button>';
+  if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+}
+
+$('#bookingForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (selectedId !== null) return;
+  const court = Number($('#bookingCourt').value);
+  const rawHour = $('#bookingHour').value;
+  const hour = Number(rawHour);
+  const duration = Number($('#bookingDuration').value);
+  const name = $('#customer').value.trim();
+  const phone = $('#customerPhone').value.trim();
+  const occupied = Array.from({ length: duration }, (_, offset) => getBooking(court, hour + offset)).some(Boolean);
+  if (!name) { $('#formError').textContent = 'Informe o nome do responsável.'; return; }
+  if (!phone || phone.replace(/\D/g, '').length < 10) { $('#formError').textContent = 'Informe um celular válido com DDD.'; return; }
+  if (rawHour === '' || !hours.includes(hour) || hour + duration > 23 || !courts[court] || occupied) { $('#formError').textContent = 'A duração escolhida não cabe neste horário ou está ocupada.'; return; }
+  const booking = { id: ++counter, date: day, court, hour, duration, name, phone, status: 'confirmed', paid: false };
+  bookings.push(booking);
+  render();
+  if (view === 'player') showConfirmation(booking);
+  else { $('#bookingDialog').close(); toast('Reserva confirmada na demonstração.'); }
+});
+
+$('#dialogActions').addEventListener('click', (event) => {
+  const action = event.target.dataset.action;
+  const booking = bookings.find((item) => item.id === selectedId);
+  if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
+  if (!action || !booking) return;
+  if (action === 'confirm') { booking.status = 'confirmed'; toast('Reserva confirmada.'); }
+  if (action === 'pay') { booking.paid = true; toast('Pagamento registrado na demonstração.'); }
+  if (action === 'cancel') {
+    if (!confirm('Cancelar esta reserva de demonstração e liberar o horário?')) return;
+    bookings.splice(bookings.indexOf(booking), 1);
+    toast('Reserva cancelada. Horário disponível novamente.');
+  }
+  $('#bookingDialog').close();
+  render();
+});
+
+$('#bookingCourt').addEventListener('change', () => updateHours());
+$('#bookingDuration').addEventListener('change', () => updateHours());
+$('#closeDialog').onclick = () => $('#bookingDialog').close();
+$('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
+$('#seePlayer').onclick = () => { setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+document.querySelectorAll('[data-view]').forEach((button) => { button.onclick = () => setView(button.dataset.view); });
+$('#schedule').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-court]');
+  if (!button) return;
+  const court = Number(button.dataset.court);
+  const hour = Number(button.dataset.hour);
+  const booking = getBooking(court, hour);
+  booking ? openDetail(booking.id) : openBooking(court, hour);
+});
+$('#requests').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-detail]');
+  if (button) openDetail(Number(button.dataset.detail));
+});
+$('#courtFilter').onchange = (event) => { filter = event.target.value; render(); };
+$('#date').onchange = (event) => { if (event.target.value) { day = event.target.value; render(); } };
+function moveDay(amount) {
+  const date = new Date(day + 'T12:00:00');
+  date.setDate(date.getDate() + amount);
+  day = localDate(date);
+  render();
+}
+$('#prevDay').onclick = () => moveDay(-1);
+$('#nextDay').onclick = () => moveDay(1);
+$('#today').onclick = () => { day = today; render(); };
+render();
+
+if (document.modelContext?.registerTool) {
+  try {
+    Promise.resolve(document.modelContext.registerTool({
+      name: 'change_booking_view',
+      title: 'Alterar visão da agenda',
+      description: 'Abre a visão do administrador ou do jogador no protótipo.',
+      inputSchema: { type: 'object', properties: { view: { type: 'string', enum: ['admin', 'player'] } }, required: ['view'], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      execute(input) { if (!input || !['admin', 'player'].includes(input.view)) throw new Error('Visão inválida'); setView(input.view); return { view, title: $('#title').textContent }; }
+    })).catch(() => {});
+  } catch {}
+}
