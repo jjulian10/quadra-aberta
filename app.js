@@ -91,7 +91,7 @@ function renderProfitPanel(list) {
       <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Indicadores atualizados conforme as reservas e pagamentos.</p></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(210px,1.1fr) minmax(240px,1.4fr);gap:22px;margin-top:20px;align-items:center">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px;margin-top:20px;align-items:center">
       <div style="display:flex;align-items:center;gap:18px">
         <div style="width:132px;height:132px;border-radius:50%;background:conic-gradient(#194d3e ${paidPercent}%,#e8eee8 0);display:grid;place-items:center;flex-shrink:0">
           <div style="width:92px;height:92px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center"><strong style="font-size:22px">${paidPercent}%</strong><small style="font-size:10px;color:#6d7c77">recebido</small></div>
