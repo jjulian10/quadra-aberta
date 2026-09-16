@@ -85,7 +85,7 @@ function renderProfitPanel(list) {
       <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Valores calculados automaticamente a partir das reservas e pagamentos.</p></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:18px">
       <div style="background:#eaf3df;border-radius:9px;padding:14px"><small>Recebido · ${periodLabel}</small><strong style="display:block;font-size:24px;margin-top:7px">${money(total)}</strong></div>
       <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:24px;margin-top:7px">${money(expected)}</strong></div>
       <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Reservas pagas</small><strong style="display:block;font-size:24px;margin-top:7px">${paid.length}</strong></div>
