@@ -225,7 +225,7 @@ $('#dialogActions').addEventListener('click', (event) => {
 });
 
 $('#bookingCourt').addEventListener('change', () => updateHours());
-$('#bookingDuration').addEventListener('change', () => updateHours());
+$('#bookingDuration')?.addEventListener('change', () => updateHours());
 $('#closeDialog').onclick = () => $('#bookingDialog').close();
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
 $('#seePlayer').onclick = () => { setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
