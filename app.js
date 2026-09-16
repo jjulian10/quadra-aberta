@@ -194,9 +194,9 @@ function openDetail(id) {
 }
 
 function dispararMensagem(booking) {
-  const digits = (booking.phone || '').replace(/\\D/g, '');
+  const digits = (booking.phone || '').replace(/\D/g, '');
   if (digits.length < 10) return;
-  const text = `Olá, ${booking.name}! Sua reserva foi confirmada na Arena Vila.\\n\\nQuadra: ${courts[booking.court].name} - ${courts[booking.court].sport}\\nData: ${labelDate(booking.date)}\\nHorário: ${booking.hour}:00 às ${booking.hour + booking.duration}:00\\nDuração: ${booking.duration} hora${booking.duration > 1 ? 's' : ''}\\n\\nAguardamos você. Em caso de alteração, entre em contato com a arena.`;
+  const text = `Olá, ${booking.name}! Sua reserva foi confirmada na Arena Vila.\n\nQuadra: ${courts[booking.court].name} - ${courts[booking.court].sport}\nData: ${labelDate(booking.date)}\nHorário: ${booking.hour}:00 às ${booking.hour + booking.duration}:00\nDuração: ${booking.duration} hora${booking.duration > 1 ? 's' : ''}\n\nAguardamos você. Em caso de alteração, entre em contato com a arena.`;
   const whatsappUrl = 'https://wa.me/55' + digits + '?text=' + encodeURIComponent(text);
   window.open(whatsappUrl, '_blank', 'noopener');
 }
