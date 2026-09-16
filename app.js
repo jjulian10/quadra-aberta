@@ -167,7 +167,6 @@ function openBooking(court = 0, hour, duration = 1) {
   $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
   $('#dialogInfo').textContent = labelDate(day) + ' · Arena Vila';
   $('#bookingCourt').value = String(court);
-  $('#bookingDuration').value = String(duration);
   $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Confirmar horário'}</button>`;
   updateHours(hour);
   $('#bookingDialog').showModal();
@@ -242,7 +241,6 @@ $('#dialogActions').addEventListener('click', (event) => {
 });
 
 $('#bookingCourt').addEventListener('change', () => updateHours());
-$('#bookingDuration')?.addEventListener('change', () => updateHours());
 $('#closeDialog').onclick = () => $('#bookingDialog').close();
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
 $('#seePlayer').onclick = () => { setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
