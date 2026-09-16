@@ -49,6 +49,7 @@ function ensureEnhancements() {
     const durationLabel = document.createElement('label');
     durationLabel.innerHTML = 'Duração<select id="bookingDuration" name="duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select>';
     $('#bookingHour').closest('label').after(durationLabel);
+    $('#bookingDuration').addEventListener('change', () => updateHours());
   }
   if (!$('#profitPanel')) {
     const panel = document.createElement('section');
