@@ -80,16 +80,30 @@ function renderProfitPanel(list) {
   const total = paid.reduce((sum, booking) => sum + courts[booking.court].price * booking.duration, 0);
   const expected = list.reduce((sum, booking) => sum + courts[booking.court].price * booking.duration, 0);
   const periodLabel = { day: 'Hoje', week: 'Esta semana', month: 'Este mês' }[profitPeriod];
+  const byCourt = courts.map((court, index) => ({
+    name: court.name,
+    value: paid.filter((booking) => booking.court === index).reduce((sum, booking) => sum + court.price * booking.duration, 0)
+  }));
+  const maxCourt = Math.max(...byCourt.map((item) => item.value), 1);
+  const paidPercent = expected ? Math.round(total / expected * 100) : 0;
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
-      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Valores calculados automaticamente a partir das reservas e pagamentos.</p></div>
+      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Indicadores atualizados conforme as reservas e pagamentos.</p></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:18px">
-      <div style="background:#eaf3df;border-radius:9px;padding:14px"><small>Recebido · ${periodLabel}</small><strong style="display:block;font-size:24px;margin-top:7px">${money(total)}</strong></div>
-      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:24px;margin-top:7px">${money(expected)}</strong></div>
-      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Reservas pagas</small><strong style="display:block;font-size:24px;margin-top:7px">${paid.length}</strong></div>
-      <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Aguardando pagamento</small><strong style="display:block;font-size:24px;margin-top:7px">${pending.length}</strong></div>
+    <div style="display:grid;grid-template-columns:minmax(210px,1.1fr) minmax(240px,1.4fr);gap:22px;margin-top:20px;align-items:center">
+      <div style="display:flex;align-items:center;gap:18px">
+        <div style="width:132px;height:132px;border-radius:50%;background:conic-gradient(#194d3e ${paidPercent}%,#e8eee8 0);display:grid;place-items:center;flex-shrink:0">
+          <div style="width:92px;height:92px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center"><strong style="font-size:22px">${paidPercent}%</strong><small style="font-size:10px;color:#6d7c77">recebido</small></div>
+        </div>
+        <div><small>Receita · ${periodLabel}</small><strong style="display:block;font-size:26px;margin:6px 0">${money(total)}</strong><span style="font-size:12px;color:#6d7c77">${pending.length} pagamento${pending.length === 1 ? '' : 's'} pendente${pending.length === 1 ? '' : 's'}</span></div>
+      </div>
+      <div><strong style="font-size:13px">Receita por quadra</strong><div style="display:grid;gap:11px;margin-top:13px">${byCourt.map((item) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>${item.name}</span><strong>${money(item.value)}</strong></div><div style="height:8px;background:#edf2ed;border-radius:10px;overflow:hidden"><div style="height:100%;width:${Math.round(item.value / maxCourt * 100)}%;background:#6a987b;border-radius:10px"></div></div></div>`).join('')}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:20px">
+      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:22px;margin-top:7px">${money(expected)}</strong></div>
+      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Reservas pagas</small><strong style="display:block;font-size:22px;margin-top:7px">${paid.length}</strong></div>
+      <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Aguardando pagamento</small><strong style="display:block;font-size:22px;margin-top:7px">${pending.length}</strong></div>
     </div>`;
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
     button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
@@ -179,6 +193,14 @@ function openDetail(id) {
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
+function dispararMensagem(booking) {
+  const digits = (booking.phone || '').replace(/\\D/g, '');
+  if (digits.length < 10) return;
+  const text = `Olá, ${booking.name}! Sua reserva foi confirmada na Arena Vila.\\n\\nQuadra: ${courts[booking.court].name} - ${courts[booking.court].sport}\\nData: ${labelDate(booking.date)}\\nHorário: ${booking.hour}:00 às ${booking.hour + booking.duration}:00\\nDuração: ${booking.duration} hora${booking.duration > 1 ? 's' : ''}\\n\\nAguardamos você. Em caso de alteração, entre em contato com a arena.`;
+  const whatsappUrl = 'https://wa.me/55' + digits + '?text=' + encodeURIComponent(text);
+  window.open(whatsappUrl, '_blank', 'noopener');
+}
+
 function showConfirmation(booking) {
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = 'Horário reservado!';
@@ -205,7 +227,7 @@ $('#bookingForm').addEventListener('submit', (event) => {
   const booking = { id: ++counter, date: day, court, hour, duration, name, phone, status: 'confirmed', paid: false };
   bookings.push(booking);
   render();
-  if (view === 'player') showConfirmation(booking);
+  if (view === 'player') { showConfirmation(booking); dispararMensagem(booking); }
   else { $('#bookingDialog').close(); toast('Reserva confirmada na demonstração.'); }
 });
 
