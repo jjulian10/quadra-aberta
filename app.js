@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   ARENA_SLUG,
+  ARENA_SUPPORT_WHATSAPP,
   SUPABASE_PUBLISHABLE_KEY,
   SUPABASE_URL
 } from './supabase-config.js';
@@ -21,10 +22,13 @@ let isAdmin = false;
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
+let bookingsRealtimeChannel = null;
+let realtimeRefreshTimer = null;
+let lastPlayerBooking = null;
 
 let bookings = [];
 
-const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const labelDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
 const getBooking = (court, hour, date = day) => bookings.find((booking) => booking.date === date && booking.court === court && hour >= booking.hour && hour < booking.hour + booking.duration);
@@ -150,6 +154,36 @@ async function refreshBookings(showError = true) {
   }
 }
 
+async function syncBookingsRealtime() {
+  if (bookingsRealtimeChannel) {
+    await supabase.removeChannel(bookingsRealtimeChannel);
+    bookingsRealtimeChannel = null;
+  }
+
+  if (!isAdmin || !arena) return;
+
+  bookingsRealtimeChannel = supabase
+    .channel(`admin-bookings-${arena.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'bookings',
+        filter: `arena_id=eq.${arena.id}`
+      },
+      () => {
+        clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error(`Falha na atualização em tempo real: ${status}`);
+      }
+    });
+}
+
 function isAvailable(court, hour, duration) {
   const selectedCourt = courts[court];
 
@@ -232,7 +266,7 @@ function renderProfitPanel(list) {
         </div>
         <div><small>Receita · ${periodLabel}</small><strong style="display:block;font-size:26px;margin:6px 0">${money(total)}</strong><span style="font-size:12px;color:#6d7c77">${pending.length} pagamento${pending.length === 1 ? '' : 's'} pendente${pending.length === 1 ? '' : 's'}</span></div>
       </div>
-      <div><strong style="font-size:13px">Receita por quadra</strong><div style="display:grid;gap:11px;margin-top:13px">${byCourt.map((item) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>${item.name}</span><strong>${money(item.value)}</strong></div><div style="height:8px;background:#edf2ed;border-radius:10px;overflow:hidden"><div style="height:100%;width:${Math.round(item.value / maxCourt * 100)}%;background:#6a987b;border-radius:10px"></div></div></div>`).join('')}</div></div>
+      <div><strong style="font-size:13px">Receita por quadra</strong><div style="display:grid;gap:11px;margin-top:13px">${byCourt.map((item) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>${esc(item.name)}</span><strong>${money(item.value)}</strong></div><div style="height:8px;background:#edf2ed;border-radius:10px;overflow:hidden"><div style="height:100%;width:${Math.round(item.value / maxCourt * 100)}%;background:#6a987b;border-radius:10px"></div></div></div>`).join('')}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:20px">
       <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:22px;margin-top:7px">${money(expected)}</strong></div>
@@ -288,7 +322,7 @@ function render() {
 
   const columns = courts.map((court, index) => ({ ...court, index })).filter((court) => filter === 'all' || String(court.index) === filter);
   $('#schedule').style.setProperty('--cols', columns.length);
-  $('#schedule').innerHTML = `<div class="grid-head"><span></span>${columns.map((court) => `<div class="court-head"><strong>${court.name}</strong><small>${court.sport} · ${money(court.price)}/h</small></div>`).join('')}</div>` +
+  $('#schedule').innerHTML = `<div class="grid-head"><span></span>${columns.map((court) => `<div class="court-head"><strong>${esc(court.name)}</strong><small>${esc(court.sport)} · ${money(court.price)}/h</small></div>`).join('')}</div>` +
     hours.map((hour) => `<div class="time-row"><div class="hour">${hour}:00</div>${columns.map((court) => {
       const booking = getBooking(court.index, hour);
       const label = booking ? (admin ? esc(booking.name) : 'Indisponível') : '+ Reservar';
@@ -300,7 +334,7 @@ function render() {
   $('#bottom').style.display = admin ? 'grid' : 'none';
   $('#pendingCount').textContent = pending.length;
   $('#requests').innerHTML = pending.length
-    ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${courts[booking.court].name} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${money(bookingTotal(booking))}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
+    ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${esc(courts[booking.court].name)} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${money(bookingTotal(booking))}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
     : '<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
   if (!admin) $('#requests').innerHTML = '';
   const finance = view === 'finance' && isAdmin;
@@ -350,7 +384,7 @@ function openDetail(id) {
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação de reserva' : 'Detalhes da reserva';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
-  $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${courts[booking.court].name} · ${courts[booking.court].sport} · ${durationLabel(booking.duration)}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${booking.paid ? 'Recebido' : 'Pendente'}</p>`;
+  $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${esc(courts[booking.court].name)} · ${esc(courts[booking.court].sport)} · ${durationLabel(booking.duration)}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${booking.paid ? 'Recebido' : 'Pendente'}</p>`;
   $('#price').textContent = money(bookingTotal(booking));
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#dialogActions').innerHTML = (booking.status === 'pending' ? '<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>' : !booking.paid ? '<button type="button" class="primary" data-action="pay">Registrar pagamento</button>' : '') + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
@@ -365,14 +399,23 @@ function dispararMensagem(booking) {
   window.open(whatsappUrl, '_blank', 'noopener');
 }
 
+function openArenaSupport(booking = lastPlayerBooking) {
+  const bookingContext = booking
+    ? `\n\nReserva: ${labelDate(booking.date)}, das ${booking.hour}:00 às ${booking.hour + booking.duration}:00, ${courts[booking.court]?.name || 'quadra selecionada'}.`
+    : '';
+  const message = `Olá! Preciso de suporte com uma reserva no Quadra Aberta.${bookingContext}`;
+  window.open(`https://wa.me/${ARENA_SUPPORT_WHATSAPP}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+}
+
 function showConfirmation(booking) {
+  lastPlayerBooking = booking;
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação enviada!' : 'Horário reservado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
   $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>${booking.status === 'pending' ? 'Seu pedido foi enviado para a arena.' : `Reserva confirmada para ${esc(booking.name)}.`}</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">${booking.status === 'pending' ? 'Aguarde a confirmação do responsável pela quadra.' : 'Guarde estas informações e chegue com alguns minutos de antecedência.'}</p></div><p><strong>Observações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• A integração automática com PIX será adicionada na próxima etapa.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
   $('#price').textContent = money(bookingTotal(booking));
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
-  $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button>';
+  $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button><button type="button" class="secondary" data-action="support">Suporte da arena</button>';
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
@@ -464,6 +507,7 @@ $('#dialogActions').addEventListener('click', async (event) => {
   const action = event.target.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
+  if (action === 'support') { openArenaSupport(); return; }
   if (!action || !booking || !isAdmin || view !== 'admin') return;
 
   let changes;
@@ -614,6 +658,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
     isAdmin = true;
     view = 'admin';
     await loadBookings();
+    await syncBookingsRealtime();
     $('#loginDialog').close();
     render();
     toast('Acesso administrativo iniciado.');
@@ -627,6 +672,7 @@ $('#adminLogout').onclick = async () => {
   await supabase.auth.signOut();
   isAdmin = false;
   view = 'player';
+  await syncBookingsRealtime();
   await refreshBookings(false);
   toast('Sessão administrativa encerrada.');
 };
@@ -652,6 +698,7 @@ $('#passwordForm').addEventListener('submit', async (event) => {
     isAdmin = true;
     view = 'admin';
     await loadBookings();
+    await syncBookingsRealtime();
     $('#passwordDialog').close();
     history.replaceState(null, '', window.location.pathname + window.location.search);
     render();
@@ -677,6 +724,7 @@ async function initialize() {
     await restoreAdminSession();
     view = isAdmin ? 'admin' : 'player';
     await loadBookings();
+    await syncBookingsRealtime();
     render();
 
     if (isAdmin && ['invite', 'recovery'].includes(authFlowType)) {
