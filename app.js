@@ -48,7 +48,10 @@ const mapBooking = (booking, isPublic = false) => ({
   name: isPublic ? '' : booking.customer_name,
   phone: isPublic ? '' : booking.customer_phone,
   status: booking.status,
+  paymentStatus: booking.payment_status ?? 'pending',
+  paidAmount: Number(booking.payment_received_amount ?? 0),
   paid: booking.payment_status === 'paid',
+  depositAmount: booking.deposit_amount === undefined || booking.deposit_amount === null ? undefined : Number(booking.deposit_amount),
   amount: booking.amount === undefined ? undefined : Number(booking.amount)
 });
 
@@ -124,7 +127,7 @@ async function loadBookings() {
 
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount')
+      .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
       .eq('arena_id', arena.id)
       .gte('booking_date', localDate(firstDate))
       .lte('booking_date', day)
@@ -249,40 +252,52 @@ function renderProfitPanel(list) {
   const panel = $('#profitPanel');
   if (!panel) return;
   if (view !== 'finance' || !isAdmin) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+
   panel.style.display = 'block';
-  const paid = list.filter((booking) => booking.paid);
-  const pending = list.filter((booking) => !booking.paid);
-  const total = paid.reduce((sum, booking) => sum + bookingTotal(booking), 0);
+
+  const fullyPaid = list.filter((booking) => booking.paid);
+  const partial = list.filter((booking) => booking.paymentStatus === 'partial' || (booking.paidAmount > 0 && !booking.paid));
+  const unpaid = list.filter((booking) => booking.paidAmount <= 0);
+  const received = list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0);
   const expected = list.reduce((sum, booking) => sum + bookingTotal(booking), 0);
   const periodLabel = { day: 'Data selecionada', week: 'Últimos 7 dias', month: 'Últimos 30 dias' }[profitPeriod];
+
   const byCourt = courts.map((court, index) => ({
     name: court.name,
-    value: paid.filter((booking) => booking.court === index).reduce((sum, booking) => sum + bookingTotal(booking), 0)
+    value: list
+      .filter((booking) => booking.court === index)
+      .reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0)
   }));
+
   const maxCourt = Math.max(...byCourt.map((item) => item.value), 1);
-  const paidPercent = expected ? Math.round(total / expected * 100) : 0;
+  const receivedPercent = expected ? Math.min(100, Math.round(received / expected * 100)) : 0;
+
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
-      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard financeiro</h2><p style="font-size:13px;margin:5px 0 0">Recebimentos por data da reserva; não representa lucro líquido.</p><label>Data de referência<input type="date" id="financeDate" value="${day}"></label></div>
+      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard financeiro</h2><p style="font-size:13px;margin:5px 0 0">Mostra somente valores realmente recebidos; o restante permanece como saldo a receber.</p><label>Data de referência<input type="date" id="financeDate" value="${day}"></label></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px;margin-top:20px;align-items:center">
       <div style="display:flex;align-items:center;gap:18px">
-        <div style="width:132px;height:132px;border-radius:50%;background:conic-gradient(#194d3e ${paidPercent}%,#e8eee8 0);display:grid;place-items:center;flex-shrink:0">
-          <div style="width:92px;height:92px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center"><strong style="font-size:22px">${paidPercent}%</strong><small style="font-size:10px;color:#6d7c77">recebido</small></div>
+        <div style="width:132px;height:132px;border-radius:50%;background:conic-gradient(#194d3e ${receivedPercent}%,#e8eee8 0);display:grid;place-items:center;flex-shrink:0">
+          <div style="width:92px;height:92px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center"><strong style="font-size:22px">${receivedPercent}%</strong><small style="font-size:10px;color:#6d7c77">recebido</small></div>
         </div>
-        <div><small>Receita · ${periodLabel}</small><strong style="display:block;font-size:26px;margin:6px 0">${money(total)}</strong><span style="font-size:12px;color:#6d7c77">${pending.length} pagamento${pending.length === 1 ? '' : 's'} pendente${pending.length === 1 ? '' : 's'}</span></div>
+        <div><small>Recebido · ${periodLabel}</small><strong style="display:block;font-size:26px;margin:6px 0">${money(received)}</strong><span style="font-size:12px;color:#6d7c77">de ${money(expected)} previstos</span></div>
       </div>
-      <div><strong style="font-size:13px">Receita por quadra</strong><div style="display:grid;gap:11px;margin-top:13px">${byCourt.map((item) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>${esc(item.name)}</span><strong>${money(item.value)}</strong></div><div style="height:8px;background:#edf2ed;border-radius:10px;overflow:hidden"><div style="height:100%;width:${Math.round(item.value / maxCourt * 100)}%;background:#6a987b;border-radius:10px"></div></div></div>`).join('')}</div></div>
+      <div><strong style="font-size:13px">Recebido por quadra</strong><div style="display:grid;gap:11px;margin-top:13px">${byCourt.map((item) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span>${esc(item.name)}</span><strong>${money(item.value)}</strong></div><div style="height:8px;background:#edf2ed;border-radius:10px;overflow:hidden"><div style="height:100%;width:${Math.round(item.value / maxCourt * 100)}%;background:#6a987b;border-radius:10px"></div></div></div>`).join('')}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:20px">
       <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Previsto total</small><strong style="display:block;font-size:22px;margin-top:7px">${money(expected)}</strong></div>
-      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Reservas pagas</small><strong style="display:block;font-size:22px;margin-top:7px">${paid.length}</strong></div>
-      <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Aguardando pagamento</small><strong style="display:block;font-size:22px;margin-top:7px">${pending.length}</strong></div>
+      <div style="background:#eaf3df;border-radius:9px;padding:14px"><small>Recebido</small><strong style="display:block;font-size:22px;margin-top:7px">${money(received)}</strong></div>
+      <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Quitadas</small><strong style="display:block;font-size:22px;margin-top:7px">${fullyPaid.length}</strong></div>
+      <div style="background:#fff4d8;border-radius:9px;padding:14px"><small>Pagamento parcial</small><strong style="display:block;font-size:22px;margin-top:7px">${partial.length}</strong></div>
+      <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Sem pagamento</small><strong style="display:block;font-size:22px;margin-top:7px">${unpaid.length}</strong></div>
     </div>`;
+
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
     button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
   });
+
   $('#financeDate').onchange = async (event) => {
     if (event.target.value) {
       day = event.target.value;
@@ -322,7 +337,7 @@ function render() {
   );
   const startingPrice = Math.min(...courts.map((court) => court.price));
   $('#stats').innerHTML = (admin
-    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / totalHours * 100) + '%', `Dos ${totalHours} horários disponíveis`, '◷'], ['Recebido', money(list.filter((booking) => booking.paid).reduce((sum, booking) => sum + bookingTotal(booking), 0)), 'Pagamentos registrados', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
+    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / totalHours * 100) + '%', `Dos ${totalHours} horários disponíveis`, '◷'], ['Recebido', money(list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0)), 'Valor efetivamente recebido', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
     : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', totalHours - occupiedHours, 'Na data selecionada', '◌']])
     .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
   renderProfitPanel(periodBookings(profitPeriod));
@@ -333,7 +348,7 @@ function render() {
     hours.map((hour) => `<div class="time-row"><div class="hour">${hour}:00</div>${columns.map((court) => {
       const booking = getBooking(court.index, hour);
       const label = booking ? (admin ? esc(booking.name) : 'Indisponível') : '+ Reservar';
-      const detail = booking ? (admin ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : 'Confirmada · A pagar') : 'Horário ocupado') : 'Disponível';
+      const detail = booking ? (admin ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : booking.paidAmount > 0 ? 'Confirmada · Parcial' : 'Confirmada · A pagar') : 'Horário ocupado') : 'Disponível';
       return `<button class="slot ${booking ? (booking.status === 'pending' ? 'waiting' : 'booked') : ''} ${booking && !admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" ${booking && !admin ? 'disabled' : ''}><strong>${label}</strong><small>${detail}</small></button>`;
     }).join('')}</div>`).join('');
   $('#dateCaption').textContent = labelDate(day);
@@ -392,15 +407,34 @@ function openBooking(court = 0, hour, duration = 1) {
 function openDetail(id) {
   const booking = bookings.find((item) => item.id === id);
   if (!booking || view !== 'admin') return;
+
   selectedId = id;
   $('#formError').textContent = '';
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação de reserva' : 'Detalhes da reserva';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
-  $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${esc(courts[booking.court].name)} · ${esc(courts[booking.court].sport)} · ${durationLabel(booking.duration)}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${booking.paid ? 'Recebido' : 'Pendente'}</p>`;
-  $('#price').textContent = money(bookingTotal(booking));
+
+  const totalAmount = bookingTotal(booking);
+  const receivedAmount = Number(booking.paidAmount || 0);
+  const remainingAmount = Math.max(totalAmount - receivedAmount, 0);
+  const paymentLabel = booking.paid
+    ? `Pago integral · ${money(receivedAmount)}`
+    : receivedAmount > 0
+      ? `Parcial · ${money(receivedAmount)} de ${money(totalAmount)} · Saldo ${money(remainingAmount)}`
+      : 'Pendente · nenhum valor recebido';
+
+  $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${esc(courts[booking.court].name)} · ${esc(courts[booking.court].sport)} · ${durationLabel(booking.duration)}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${paymentLabel}</p>`;
+  $('#price').textContent = money(totalAmount);
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
-  $('#dialogActions').innerHTML = (booking.status === 'pending' ? '<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>' : !booking.paid ? '<button type="button" class="primary" data-action="pay">Registrar pagamento</button>' : '') + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
+
+  const paymentAction = !booking.paid && booking.status !== 'pending'
+    ? `<button type="button" class="primary" data-action="pay">${receivedAmount > 0 ? 'Registrar saldo como pago' : 'Registrar pagamento integral'}</button>`
+    : '';
+
+  $('#dialogActions').innerHTML = (booking.status === 'pending'
+    ? '<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>'
+    : paymentAction) + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
+
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
@@ -424,12 +458,18 @@ function showConfirmation(booking) {
   clearInterval(paymentPollTimer);
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
-  $('#dialogTitle').textContent = 'Pagamento confirmado!';
+  $('#dialogTitle').textContent = 'Sinal confirmado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
-  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Recebemos o sinal via Pix e o horário já está garantido na agenda da arena.</p></div><p><strong>Informações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• Sinal pago: ${money(booking.depositAmount || 0.01)}.<br>• Para cancelar ou alterar, entre em contato com a arena.</p>`;
-  $('#price').textContent = money(bookingTotal(booking));
+
+  const totalAmount = bookingTotal(booking);
+  const receivedAmount = Number(booking.paidAmount ?? booking.depositAmount ?? 0);
+  const remainingAmount = Math.max(totalAmount - receivedAmount, 0);
+
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Recebemos o sinal via Pix e o horário já está garantido na agenda da arena.</p></div><p><strong>Informações do pagamento</strong></p><p>• Valor total da reserva: ${money(totalAmount)}.<br>• Valor recebido: ${money(receivedAmount)}.<br>• Saldo restante: ${money(remainingAmount)}.<br>• Situação: ${remainingAmount > 0 ? 'Pagamento parcial' : 'Pagamento integral'}.</p>`;
+  $('#price').textContent = money(totalAmount);
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button><button type="button" class="secondary" data-action="support">Suporte da arena</button>';
+
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
@@ -440,11 +480,15 @@ async function checkPaymentStatus(booking) {
       payment_token: booking.paymentToken
     }
   });
+
   if (error || !data) return;
+
   const state = data;
-  if (state.payment_status === 'paid' && state.booking_status === 'confirmed') {
+  if (['partial', 'paid'].includes(state.payment_status) && state.booking_status === 'confirmed') {
     booking.status = 'confirmed';
-    booking.paid = true;
+    booking.paymentStatus = state.payment_status;
+    booking.paid = state.payment_status === 'paid';
+    booking.paidAmount = Number(state.received_amount ?? booking.depositAmount ?? 0);
     await refreshBookings(false);
     showConfirmation(booking);
   } else if (state.booking_status === 'cancelled') {
@@ -513,7 +557,7 @@ $('#bookingForm').addEventListener('submit', async (event) => {
           payment_status: 'pending',
           amount: courts[court].price * duration
         })
-        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount')
+        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
         .single();
 
       if (error) throw error;
@@ -547,6 +591,8 @@ $('#bookingForm').addEventListener('submit', async (event) => {
         name,
         phone,
         status: 'pending',
+        paymentStatus: 'pending',
+        paidAmount: 0,
         paid: false,
         amount: courts[court].price * duration,
         depositAmount: Number(data.deposit_amount),
@@ -614,8 +660,11 @@ $('#bookingDialog').addEventListener('click', async (event) => {
   }
 
   if (action === 'pay') {
-    changes = { payment_status: 'paid' };
-    successMessage = 'Pagamento registrado.';
+    changes = {
+      payment_status: 'paid',
+      payment_received_amount: bookingTotal(booking)
+    };
+    successMessage = 'Pagamento integral registrado.';
   }
 
   if (action === 'cancel') {
