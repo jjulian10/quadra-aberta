@@ -23,8 +23,12 @@ Abra dist/index.html no navegador ou use a extensão Live Server no VS Code.
 
 Alternativa: para publicação manual, arraste a pasta dist para a área de deploy manual do Netlify. Essa alternativa não conecta o GitHub automaticamente.
 
+## Supabase
+
+A estrutura inicial do banco está em `supabase/schema.sql`. Ela inclui arenas, quadras, reservas, administradores, políticas de segurança e bloqueio de reservas sobrepostas. As instruções estão em `supabase/README.md`.
+
 ## Limitações da demonstração
-Dados fictícios são mantidos apenas na memória do navegador. Atualizar a página reinicia tudo. O login administrativo é somente uma simulação no front-end, com as credenciais `admin@quadraaberta.test` e `admin123`; ainda não há autenticação segura, banco, Pix ou pagamentos reais. A visão pública do jogador mostra a agenda e permite solicitar horários. A área de agenda e o dashboard financeiro ficam disponíveis após o login administrativo.
+Enquanto um projeto Supabase não estiver conectado, os dados fictícios continuam mantidos apenas na memória do navegador e atualizar a página reinicia tudo. O login administrativo permanece simulado no front-end, com as credenciais `admin@quadraaberta.test` e `admin123`; ainda não há Pix ou pagamentos reais. A visão pública do jogador mostra a agenda e permite solicitar horários. A área de agenda e o dashboard financeiro ficam disponíveis após o login administrativo.
 
 ## Dependência visual
 As fontes DM Sans e Manrope são carregadas pelo Google Fonts. Sem internet, o navegador usa fontes alternativas.
