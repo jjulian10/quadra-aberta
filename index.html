@@ -125,7 +125,23 @@
 <label>Senha<input id="adminPassword" type="password" required autocomplete="current-password" placeholder="Digite sua senha"></label>
 <p id="loginError" role="alert"></p>
 <div class="dialog-actions"><button class="primary" type="submit">Entrar no painel</button></div>
+<button class="text-action" id="forgotPassword" type="button">Esqueci minha senha</button>
 <p class="form-note">Acesso exclusivo para administradores cadastrados no Supabase.</p>
+</form>
+</dialog>
+<dialog id="passwordDialog">
+<form id="passwordForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">PRIMEIRO ACESSO</p>
+<h2>Crie sua senha</h2>
+</div>
+</div>
+<p class="login-intro">Defina uma senha segura para acessar novamente o painel administrativo.</p>
+<label>Nova senha<input id="newAdminPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo de 8 caracteres"></label>
+<label>Confirmar senha<input id="confirmAdminPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Digite a senha novamente"></label>
+<p id="passwordError" role="alert"></p>
+<div class="dialog-actions"><button class="primary" type="submit">Salvar senha e entrar</button></div>
 </form>
 </dialog>
 <dialog id="bookingDialog">

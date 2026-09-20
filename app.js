@@ -8,6 +8,7 @@ import {
 const $ = (selector) => document.querySelector(selector);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const authFlowType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
 let arena = null;
 let courts = [];
 let hours = [];
@@ -566,6 +567,28 @@ $('#adminLogin').onclick = () => {
 
 $('#closeLogin').onclick = () => $('#loginDialog').close();
 
+$('#forgotPassword').onclick = async () => {
+  const email = $('#adminEmail').value.trim().toLowerCase();
+  $('#loginError').textContent = '';
+
+  if (!email) {
+    $('#loginError').textContent = 'Informe seu e-mail para recuperar a senha.';
+    return;
+  }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+
+    if (error) throw error;
+    toast('Enviamos um link para você criar uma nova senha.');
+  } catch (error) {
+    console.error(error);
+    $('#loginError').textContent = error.message || 'Não foi possível enviar o link de recuperação.';
+  }
+};
+
 $('#loginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const email = $('#adminEmail').value.trim().toLowerCase();
@@ -608,6 +631,37 @@ $('#adminLogout').onclick = async () => {
   toast('Sessão administrativa encerrada.');
 };
 
+$('#passwordForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const password = $('#newAdminPassword').value;
+  const confirmation = $('#confirmAdminPassword').value;
+  $('#passwordError').textContent = '';
+
+  if (password !== confirmation) {
+    $('#passwordError').textContent = 'As senhas informadas não são iguais.';
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+
+    const allowed = await hasAdminAccess(data.user.id);
+    if (!allowed) throw new Error('Este usuário não possui acesso à administração da arena.');
+
+    isAdmin = true;
+    view = 'admin';
+    await loadBookings();
+    $('#passwordDialog').close();
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    render();
+    toast('Senha criada. Acesso administrativo iniciado.');
+  } catch (error) {
+    console.error(error);
+    $('#passwordError').textContent = error.message || 'Não foi possível salvar a senha.';
+  }
+});
+
 async function initialize() {
   try {
     await loadArena();
@@ -624,6 +678,12 @@ async function initialize() {
     view = isAdmin ? 'admin' : 'player';
     await loadBookings();
     render();
+
+    if (isAdmin && ['invite', 'recovery'].includes(authFlowType)) {
+      $('#passwordForm').reset();
+      $('#passwordError').textContent = '';
+      $('#passwordDialog').showModal();
+    }
   } catch (error) {
     console.error(error);
     $('#title').textContent = 'Agenda temporariamente indisponível.';
