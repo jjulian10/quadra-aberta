@@ -25,6 +25,7 @@ let profitPeriod = 'day';
 let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
+let paymentPollTimer = null;
 
 let bookings = [];
 
@@ -219,6 +220,12 @@ function ensureEnhancements() {
     phoneLabel.innerHTML = 'Celular do responsável<input name="phone" id="customerPhone" required maxlength="20" placeholder="Ex.: (69) 99999-9999" autocomplete="tel" inputmode="tel">';
     customer.closest('label').after(phoneLabel);
   }
+  if (customer && !$('#customerEmail')) {
+    const emailLabel = document.createElement('label');
+    emailLabel.id = 'customerEmailLabel';
+    emailLabel.innerHTML = 'E-mail para o pagamento<input name="email" id="customerEmail" type="email" required maxlength="120" placeholder="Ex.: jogador@email.com" autocomplete="email">';
+    $('#customerPhone').closest('label').after(emailLabel);
+  }
   if (!$('#profitPanel')) {
     const panel = document.createElement('section');
     panel.id = 'profitPanel';
@@ -362,16 +369,22 @@ function updateHours(preferred) {
 }
 
 function openBooking(court = 0, hour, duration = 1) {
+  clearInterval(paymentPollTimer);
   selectedId = null;
   $('#bookingForm').reset();
   $('#formError').textContent = '';
   $('#formFields').hidden = false;
+  $('#customerEmailLabel').classList.toggle('hidden', view === 'admin');
+  $('#customerEmail').required = view !== 'admin';
+  $('#bookingNote').textContent = view === 'admin'
+    ? 'A reserva será adicionada diretamente à agenda.'
+    : 'O horário será confirmado automaticamente após o pagamento do sinal via Pix.';
   $('#detailContent').innerHTML = '';
   $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
   $('#dialogInfo').textContent = labelDate(day) + ' · Arena Vila';
   $('#bookingCourt').value = String(court);
   $('#bookingDuration').value = String(duration);
-  $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Confirmar horário'}</button>`;
+  $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Gerar Pix de R$ 0,01'}</button>`;
   updateHours(hour);
   $('#bookingDialog').showModal();
 }
@@ -408,15 +421,55 @@ function openArenaSupport(booking = lastPlayerBooking) {
 }
 
 function showConfirmation(booking) {
+  clearInterval(paymentPollTimer);
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
-  $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação enviada!' : 'Horário reservado!';
+  $('#dialogTitle').textContent = 'Pagamento confirmado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
-  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>${booking.status === 'pending' ? 'Seu pedido foi enviado para a arena.' : `Reserva confirmada para ${esc(booking.name)}.`}</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">${booking.status === 'pending' ? 'Aguarde a confirmação do responsável pela quadra.' : 'Guarde estas informações e chegue com alguns minutos de antecedência.'}</p></div><p><strong>Observações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• A integração automática com PIX será adicionada na próxima etapa.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Recebemos o sinal via Pix e o horário já está garantido na agenda da arena.</p></div><p><strong>Informações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• Sinal pago: ${money(booking.depositAmount || 0.01)}.<br>• Para cancelar ou alterar, entre em contato com a arena.</p>`;
   $('#price').textContent = money(bookingTotal(booking));
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button><button type="button" class="secondary" data-action="support">Suporte da arena</button>';
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+}
+
+async function checkPaymentStatus(booking) {
+  const { data, error } = await supabase.functions.invoke('check-pix-payment', {
+    body: {
+      booking_id: booking.id,
+      payment_token: booking.paymentToken
+    }
+  });
+  if (error || !data) return;
+  const state = data;
+  if (state.payment_status === 'paid' && state.booking_status === 'confirmed') {
+    booking.status = 'confirmed';
+    booking.paid = true;
+    await refreshBookings(false);
+    showConfirmation(booking);
+  } else if (state.booking_status === 'cancelled') {
+    clearInterval(paymentPollTimer);
+    $('#formError').textContent = 'O Pix expirou e o horário foi liberado. Feche esta janela e tente novamente.';
+  }
+}
+
+function showPixPayment(booking) {
+  lastPlayerBooking = booking;
+  $('#formFields').hidden = true;
+  $('#dialogTitle').textContent = 'Pague o sinal via Pix';
+  $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
+  const qrImage = booking.qrCodeBase64
+    ? `<img class="pix-qr" src="data:image/png;base64,${booking.qrCodeBase64}" alt="QR Code Pix para pagar o sinal">`
+    : '';
+  $('#detailContent').innerHTML = `<div class="pix-panel"><h3>Sinal de ${money(booking.depositAmount)}</h3><p>Escaneie o QR Code ou copie o código Pix. A confirmação acontece automaticamente após o pagamento.</p>${qrImage}<div class="pix-code"><input id="pixCopyCode" value="${esc(booking.qrCode)}" readonly aria-label="Código Pix copia e cola"><button type="button" class="secondary" data-action="copy-pix">Copiar Pix</button></div><div class="payment-waiting"><span class="payment-dot"></span><span>Aguardando confirmação do pagamento…</span></div></div>`;
+  $('#price').textContent = money(booking.depositAmount);
+  document.querySelector('.price-line span').textContent = 'Sinal para confirmar o horário';
+  $('#bookingNote').textContent = 'O código expira em 30 minutos. O restante do valor é tratado diretamente com a arena.';
+  $('#dialogActions').innerHTML = '<button type="button" class="secondary" data-action="support">Suporte da arena</button>';
+  if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+  clearInterval(paymentPollTimer);
+  paymentPollTimer = setInterval(() => checkPaymentStatus(booking), 3000);
+  checkPaymentStatus(booking);
 }
 
 $('#bookingForm').addEventListener('submit', async (event) => {
@@ -428,9 +481,11 @@ $('#bookingForm').addEventListener('submit', async (event) => {
   const duration = Number($('#bookingDuration').value);
   const name = $('#customer').value.trim();
   const phone = $('#customerPhone').value.trim();
+  const email = $('#customerEmail').value.trim().toLowerCase();
   const available = isAvailable(court, hour, duration);
   if (!name) { $('#formError').textContent = 'Informe o nome do responsável.'; return; }
   if (!phone || phone.replace(/\D/g, '').length < 10) { $('#formError').textContent = 'Informe um celular válido com DDD.'; return; }
+  if (!isAdmin && !$('#customerEmail').checkValidity()) { $('#formError').textContent = 'Informe um e-mail válido para gerar o Pix.'; return; }
   if (rawHour === '' || !hours.includes(hour) || !courts[court] || !available) { $('#formError').textContent = 'Este horário não está disponível. Escolha outro.'; return; }
 
   const submitButton = $('#submitBooking');
@@ -461,19 +516,27 @@ $('#bookingForm').addEventListener('submit', async (event) => {
       if (error) throw error;
       savedBooking = mapBooking(data);
     } else {
-      const { data: bookingId, error } = await supabase.rpc('create_public_booking', {
-        target_arena_slug: ARENA_SLUG,
-        target_court_id: courts[court].id,
-        target_date: day,
-        target_start_hour: hour,
-        target_duration: duration,
-        target_customer_name: name,
-        target_customer_phone: phone
+      submitButton.textContent = 'Gerando Pix...';
+      const { data, error } = await supabase.functions.invoke('create-pix-payment', {
+        body: {
+          arena_slug: ARENA_SLUG,
+          court_id: courts[court].id,
+          booking_date: day,
+          start_hour: hour,
+          duration,
+          customer_name: name,
+          customer_phone: phone,
+          customer_email: email
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        let message = error.message;
+        try { message = (await error.context.json()).error || message; } catch {}
+        throw new Error(message);
+      }
       savedBooking = {
-        id: bookingId,
+        id: data.booking_id,
         date: day,
         court,
         hour,
@@ -482,7 +545,12 @@ $('#bookingForm').addEventListener('submit', async (event) => {
         phone,
         status: 'pending',
         paid: false,
-        amount: courts[court].price * duration
+        amount: courts[court].price * duration,
+        depositAmount: Number(data.deposit_amount),
+        paymentToken: data.payment_token,
+        qrCode: data.qr_code,
+        qrCodeBase64: data.qr_code_base64,
+        ticketUrl: data.ticket_url
       };
     }
 
@@ -493,13 +561,13 @@ $('#bookingForm').addEventListener('submit', async (event) => {
       $('#bookingDialog').close();
       toast('Reserva confirmada e salva na agenda.');
     } else {
-      showConfirmation(savedBooking);
+      showPixPayment(savedBooking);
     }
   } catch (error) {
     console.error(error);
     $('#formError').textContent = error.message || 'Não foi possível salvar a reserva.';
     submitButton.disabled = false;
-    submitButton.textContent = isAdmin ? 'Confirmar reserva' : 'Confirmar horário';
+    submitButton.textContent = isAdmin ? 'Confirmar reserva' : 'Gerar Pix de R$ 0,01';
   }
 });
 
@@ -508,6 +576,20 @@ $('#dialogActions').addEventListener('click', async (event) => {
   const booking = bookings.find((item) => item.id === selectedId);
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
   if (action === 'support') { openArenaSupport(); return; }
+  if (action === 'copy-pix') {
+    const code = $('#pixCopyCode')?.value;
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      event.target.textContent = 'Copiado!';
+      toast('Código Pix copiado.');
+    } catch {
+      $('#pixCopyCode').select();
+      document.execCommand('copy');
+      toast('Código Pix copiado.');
+    }
+    return;
+  }
   if (!action || !booking || !isAdmin || view !== 'admin') return;
 
   let changes;
@@ -552,7 +634,7 @@ $('#dialogActions').addEventListener('click', async (event) => {
 
 $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
-$('#closeDialog').onclick = () => $('#bookingDialog').close();
+$('#closeDialog').onclick = () => { clearInterval(paymentPollTimer); $('#bookingDialog').close(); };
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
 $('#seePlayer').onclick = async () => {
   await supabase.auth.signOut();

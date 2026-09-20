@@ -158,6 +158,8 @@
 <div id="formFields">
 <label>Nome do responsável<input name="name" id="customer" required maxlength="70" placeholder="Ex.: Julian Matheus" autocomplete="name">
 </label>
+<label>Celular do responsável<input name="phone" id="customerPhone" required maxlength="20" placeholder="Ex.: (69) 99999-9999" autocomplete="tel" inputmode="tel"></label>
+<label id="customerEmailLabel">E-mail para o pagamento<input name="email" id="customerEmail" type="email" required maxlength="120" placeholder="Ex.: jogador@email.com" autocomplete="email"></label>
 <div class="field-grid">
 <label>Duração<select id="bookingDuration" required>
 <option value="1">1 hora</option>
@@ -182,7 +184,7 @@
 <strong id="price">
 </strong>
 </div>
-<p class="form-note">A solicitação ficará registrada e aguardará a confirmação da arena.</p>
+<p class="form-note" id="bookingNote">O horário será confirmado automaticamente após o pagamento do sinal via Pix.</p>
 <p id="formError" role="alert">
 </p>
 <div id="dialogActions">
