@@ -1,11 +1,16 @@
+import { createClient } from '@supabase/supabase-js';
+import {
+  ARENA_SLUG,
+  SUPABASE_PUBLISHABLE_KEY,
+  SUPABASE_URL
+} from './supabase-config.js';
+
 const $ = (selector) => document.querySelector(selector);
 
-const courts = [
-  { name: 'Quadra 01', sport: 'Vôlei', price: 100 },
-  { name: 'Quadra 02', sport: 'Beach tennis', price: 120 },
-  { name: 'Quadra 03', sport: 'Futsal', price: 150 }
-];
-const hours = Array.from({ length: 9 }, (_, index) => index + 14);
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let arena = null;
+let courts = [];
+let hours = [];
 const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const today = localDate(new Date());
 
@@ -14,18 +19,9 @@ let view = 'player';
 let isAdmin = false;
 let filter = 'all';
 let selectedId = null;
-let counter = 20;
 let profitPeriod = 'day';
 
-const bookings = [
-  { id: 1, court: 0, hour: 14, duration: 1, name: 'Marina Costa', phone: '(69) 99999-1001', status: 'confirmed', paid: true },
-  { id: 2, court: 1, hour: 15, duration: 1, name: 'Bruno Almeida', phone: '(69) 99999-1002', status: 'confirmed', paid: true },
-  { id: 3, court: 2, hour: 16, duration: 1, name: 'Equipe Resenha', phone: '(69) 99999-1003', status: 'confirmed', paid: false },
-  { id: 4, court: 0, hour: 17, duration: 1, name: 'Turma do vôlei', phone: '(69) 99999-1004', status: 'confirmed', paid: true },
-  { id: 5, court: 1, hour: 18, duration: 1, name: 'Camila Santos', phone: '(69) 99999-1005', status: 'pending', paid: false },
-  { id: 6, court: 0, hour: 19, duration: 1, name: 'Julian Matheus', phone: '(69) 99999-1006', status: 'pending', paid: false },
-  { id: 7, court: 2, hour: 20, duration: 1, name: 'Amigos da bola', phone: '(69) 99999-1007', status: 'confirmed', paid: true }
-].map((booking) => ({ ...booking, date: today }));
+let bookings = [];
 
 const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
@@ -33,10 +29,133 @@ const labelDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-
 const getBooking = (court, hour, date = day) => bookings.find((booking) => booking.date === date && booking.court === court && hour >= booking.hour && hour < booking.hour + booking.duration);
 
 const durationLabel = (duration) => `${duration} hora${duration > 1 ? 's' : ''}`;
-const bookingTotal = (booking) => courts[booking.court].price * booking.duration;
+const bookingTotal = (booking) => Number(
+  booking.amount ?? courts[booking.court].price * booking.duration
+);
+
+const mapBooking = (booking, isPublic = false) => ({
+  id: booking.id ?? `public-${booking.court_id}-${booking.start_hour}`,
+  date: booking.booking_date ?? day,
+  court: courts.findIndex((court) => court.id === booking.court_id),
+  hour: Number(booking.start_hour),
+  duration: Number(booking.duration),
+  name: isPublic ? '' : booking.customer_name,
+  phone: isPublic ? '' : booking.customer_phone,
+  status: booking.status,
+  paid: booking.payment_status === 'paid',
+  amount: booking.amount === undefined ? undefined : Number(booking.amount)
+});
+
+async function loadArena() {
+  const { data: arenaData, error: arenaError } = await supabase
+    .from('arenas')
+    .select('id, name, city, timezone')
+    .eq('slug', ARENA_SLUG)
+    .single();
+
+  if (arenaError) throw arenaError;
+  arena = arenaData;
+
+  const { data: courtData, error: courtError } = await supabase
+    .from('courts')
+    .select('id, name, sport, hourly_price, opening_hour, closing_hour, sort_order')
+    .eq('arena_id', arena.id)
+    .eq('active', true)
+    .order('sort_order');
+
+  if (courtError) throw courtError;
+
+  courts = courtData.map((court) => ({
+    id: court.id,
+    name: court.name,
+    sport: court.sport,
+    price: Number(court.hourly_price),
+    openingHour: Number(court.opening_hour),
+    closingHour: Number(court.closing_hour)
+  }));
+
+  const openingHour = Math.min(...courts.map((court) => court.openingHour));
+  const closingHour = Math.max(...courts.map((court) => court.closingHour));
+  hours = Array.from(
+    { length: closingHour - openingHour },
+    (_, index) => openingHour + index
+  );
+}
+
+async function hasAdminAccess(userId) {
+  if (!arena || !userId) return false;
+
+  const { data, error } = await supabase
+    .from('arena_admins')
+    .select('role')
+    .eq('arena_id', arena.id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function restoreAdminSession() {
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user) return;
+
+  isAdmin = await hasAdminAccess(data.user.id);
+
+  if (!isAdmin) {
+    await supabase.auth.signOut();
+  }
+}
+
+async function loadBookings() {
+  if (!arena) return;
+
+  if (isAdmin) {
+    const reference = new Date(day + 'T12:00:00');
+    const firstDate = new Date(reference);
+    firstDate.setDate(firstDate.getDate() - 29);
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount')
+      .eq('arena_id', arena.id)
+      .gte('booking_date', localDate(firstDate))
+      .lte('booking_date', day)
+      .in('status', ['pending', 'confirmed'])
+      .order('start_hour');
+
+    if (error) throw error;
+    bookings = data.map((booking) => mapBooking(booking));
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('get_public_schedule', {
+    target_arena_slug: ARENA_SLUG,
+    target_date: day
+  });
+
+  if (error) throw error;
+  bookings = data.map((booking) => mapBooking(booking, true));
+}
+
+async function refreshBookings(showError = true) {
+  try {
+    await loadBookings();
+    render();
+  } catch (error) {
+    console.error(error);
+    if (showError) toast('Não foi possível atualizar a agenda. Tente novamente.');
+  }
+}
+
 function isAvailable(court, hour, duration) {
-  return Boolean(courts[court]) && [1, 2, 3].includes(duration) &&
-    hours.includes(hour) && hour + duration <= 23 &&
+  const selectedCourt = courts[court];
+
+  return Boolean(selectedCourt) && [1, 2, 3].includes(duration) &&
+    hours.includes(hour) &&
+    hour >= selectedCourt.openingHour &&
+    hour + duration <= selectedCourt.closingHour &&
     Array.from({ length: duration }, (_, offset) => hour + offset)
       .every((slot) => hours.includes(slot) && !getBooking(court, slot));
 }
@@ -122,7 +241,12 @@ function renderProfitPanel(list) {
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
     button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
   });
-  $('#financeDate').onchange = (event) => { if (event.target.value) { day = event.target.value; render(); } };
+  $('#financeDate').onchange = async (event) => {
+    if (event.target.value) {
+      day = event.target.value;
+      await refreshBookings();
+    }
+  };
 }
 
 function setView(nextView) {
@@ -150,9 +274,14 @@ function render() {
   const confirmed = list.filter((booking) => booking.status === 'confirmed');
   const pending = list.filter((booking) => booking.status === 'pending');
   const occupiedHours = list.reduce((sum, booking) => sum + booking.duration, 0);
+  const totalHours = courts.reduce(
+    (sum, court) => sum + court.closingHour - court.openingHour,
+    0
+  );
+  const startingPrice = Math.min(...courts.map((court) => court.price));
   $('#stats').innerHTML = (admin
-    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / 27 * 100) + '%', 'Dos 27 horários disponíveis', '◷'], ['Recebido', money(list.filter((booking) => booking.paid).reduce((sum, booking) => sum + bookingTotal(booking), 0)), 'Pagamentos registrados', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
-    : [['Quadras', 3, 'Três espaços para jogar', '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(100), 'Por quadra / hora', '↗'], ['Horários livres', 27 - occupiedHours, 'Na data selecionada', '◌']])
+    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / totalHours * 100) + '%', `Dos ${totalHours} horários disponíveis`, '◷'], ['Recebido', money(list.filter((booking) => booking.paid).reduce((sum, booking) => sum + bookingTotal(booking), 0)), 'Pagamentos registrados', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
+    : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', totalHours - occupiedHours, 'Na data selecionada', '◌']])
     .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
   renderProfitPanel(periodBookings(profitPeriod));
 
@@ -239,14 +368,14 @@ function showConfirmation(booking) {
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação enviada!' : 'Horário reservado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
-  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>${booking.status === 'pending' ? 'Seu pedido foi enviado para a arena.' : `Reserva confirmada para ${esc(booking.name)}.`}</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">${booking.status === 'pending' ? 'Aguarde a confirmação do responsável pela quadra.' : 'Guarde estas informações e chegue com alguns minutos de antecedência.'}</p></div><p><strong>Observações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• Em uma versão real, o pagamento PIX será validado automaticamente.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>${booking.status === 'pending' ? 'Seu pedido foi enviado para a arena.' : `Reserva confirmada para ${esc(booking.name)}.`}</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">${booking.status === 'pending' ? 'Aguarde a confirmação do responsável pela quadra.' : 'Guarde estas informações e chegue com alguns minutos de antecedência.'}</p></div><p><strong>Observações</strong></p><p>• Duração: ${durationLabel(booking.duration)}.<br>• A integração automática com PIX será adicionada na próxima etapa.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
   $('#price').textContent = money(bookingTotal(booking));
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button>';
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
-$('#bookingForm').addEventListener('submit', (event) => {
+$('#bookingForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (selectedId !== null) return;
   const court = Number($('#bookingCourt').value);
@@ -258,35 +387,135 @@ $('#bookingForm').addEventListener('submit', (event) => {
   const available = isAvailable(court, hour, duration);
   if (!name) { $('#formError').textContent = 'Informe o nome do responsável.'; return; }
   if (!phone || phone.replace(/\D/g, '').length < 10) { $('#formError').textContent = 'Informe um celular válido com DDD.'; return; }
-  if (rawHour === '' || !hours.includes(hour) || hour + duration > 23 || !courts[court] || !available) { $('#formError').textContent = 'Este horário não está disponível. Escolha outro.'; return; }
-  const booking = { id: ++counter, date: day, court, hour, duration, name, phone, status: view === 'admin' ? 'confirmed' : 'pending', paid: false };
-  bookings.push(booking);
-  render();
-  if (view === 'player') { showConfirmation(booking); }
-  else { $('#bookingDialog').close(); toast('Reserva confirmada na demonstração.'); }
+  if (rawHour === '' || !hours.includes(hour) || !courts[court] || !available) { $('#formError').textContent = 'Este horário não está disponível. Escolha outro.'; return; }
+
+  const submitButton = $('#submitBooking');
+  submitButton.disabled = true;
+  submitButton.textContent = 'Salvando...';
+
+  try {
+    let savedBooking;
+
+    if (isAdmin) {
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert({
+          arena_id: arena.id,
+          court_id: courts[court].id,
+          booking_date: day,
+          start_hour: hour,
+          duration,
+          customer_name: name,
+          customer_phone: phone.replace(/\D/g, ''),
+          status: 'confirmed',
+          payment_status: 'pending',
+          amount: courts[court].price * duration
+        })
+        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount')
+        .single();
+
+      if (error) throw error;
+      savedBooking = mapBooking(data);
+    } else {
+      const { data: bookingId, error } = await supabase.rpc('create_public_booking', {
+        target_arena_slug: ARENA_SLUG,
+        target_court_id: courts[court].id,
+        target_date: day,
+        target_start_hour: hour,
+        target_duration: duration,
+        target_customer_name: name,
+        target_customer_phone: phone
+      });
+
+      if (error) throw error;
+      savedBooking = {
+        id: bookingId,
+        date: day,
+        court,
+        hour,
+        duration,
+        name,
+        phone,
+        status: 'pending',
+        paid: false,
+        amount: courts[court].price * duration
+      };
+    }
+
+    await loadBookings();
+    render();
+
+    if (isAdmin) {
+      $('#bookingDialog').close();
+      toast('Reserva confirmada e salva na agenda.');
+    } else {
+      showConfirmation(savedBooking);
+    }
+  } catch (error) {
+    console.error(error);
+    $('#formError').textContent = error.message || 'Não foi possível salvar a reserva.';
+    submitButton.disabled = false;
+    submitButton.textContent = isAdmin ? 'Confirmar reserva' : 'Confirmar horário';
+  }
 });
 
-$('#dialogActions').addEventListener('click', (event) => {
+$('#dialogActions').addEventListener('click', async (event) => {
   const action = event.target.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
   if (!action || !booking || !isAdmin || view !== 'admin') return;
-  if (action === 'confirm') { booking.status = 'confirmed'; toast('Reserva confirmada.'); }
-  if (action === 'pay') { booking.paid = true; toast('Pagamento registrado na demonstração.'); }
-  if (action === 'cancel') {
-    if (!confirm('Cancelar esta reserva de demonstração e liberar o horário?')) return;
-    bookings.splice(bookings.indexOf(booking), 1);
-    toast('Reserva cancelada. Horário disponível novamente.');
+
+  let changes;
+  let successMessage;
+
+  if (action === 'confirm') {
+    changes = { status: 'confirmed' };
+    successMessage = 'Reserva confirmada.';
   }
-  $('#bookingDialog').close();
-  render();
+
+  if (action === 'pay') {
+    changes = { payment_status: 'paid' };
+    successMessage = 'Pagamento registrado.';
+  }
+
+  if (action === 'cancel') {
+    if (!confirm('Cancelar esta reserva e liberar o horário?')) return;
+    changes = { status: 'cancelled' };
+    successMessage = 'Reserva cancelada. Horário disponível novamente.';
+  }
+
+  if (!changes) return;
+
+  try {
+    const { error } = await supabase
+      .from('bookings')
+      .update(changes)
+      .eq('id', booking.id)
+      .eq('arena_id', arena.id);
+
+    if (error) throw error;
+
+    if (action === 'confirm') dispararMensagem(booking);
+    $('#bookingDialog').close();
+    await refreshBookings(false);
+    toast(successMessage);
+  } catch (error) {
+    console.error(error);
+    toast('Não foi possível atualizar a reserva.');
+  }
 });
 
 $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#closeDialog').onclick = () => $('#bookingDialog').close();
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
-$('#seePlayer').onclick = () => { isAdmin = false; setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('#seePlayer').onclick = async () => {
+  await supabase.auth.signOut();
+  isAdmin = false;
+  view = 'player';
+  await refreshBookings(false);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 document.querySelectorAll('[data-view]').forEach((button) => {
   button.onclick = () => {
     if (button.dataset.view === 'admin' && !isAdmin) {
@@ -307,19 +536,27 @@ $('#schedule').addEventListener('click', (event) => {
 });
 $('#requests').addEventListener('click', (event) => {
   const button = event.target.closest('[data-detail]');
-  if (button) openDetail(Number(button.dataset.detail));
+  if (button) openDetail(button.dataset.detail);
 });
 $('#courtFilter').onchange = (event) => { filter = event.target.value; render(); };
-$('#date').onchange = (event) => { if (event.target.value) { day = event.target.value; render(); } };
-function moveDay(amount) {
+$('#date').onchange = async (event) => {
+  if (event.target.value) {
+    day = event.target.value;
+    await refreshBookings();
+  }
+};
+async function moveDay(amount) {
   const date = new Date(day + 'T12:00:00');
   date.setDate(date.getDate() + amount);
   day = localDate(date);
-  render();
+  await refreshBookings();
 }
 $('#prevDay').onclick = () => moveDay(-1);
 $('#nextDay').onclick = () => moveDay(1);
-$('#today').onclick = () => { day = today; render(); };
+$('#today').onclick = async () => {
+  day = today;
+  await refreshBookings();
+};
 
 $('#adminLogin').onclick = () => {
   $('#loginError').textContent = '';
@@ -329,29 +566,74 @@ $('#adminLogin').onclick = () => {
 
 $('#closeLogin').onclick = () => $('#loginDialog').close();
 
-$('#loginForm').addEventListener('submit', (event) => {
+$('#loginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const email = $('#adminEmail').value.trim().toLowerCase();
   const password = $('#adminPassword').value;
-  if (email !== 'admin@quadraaberta.test' || password !== 'admin123') {
-    $('#loginError').textContent = 'E-mail ou senha inválidos.';
-    return;
+
+  $('#loginError').textContent = '';
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) throw error;
+
+    const allowed = await hasAdminAccess(data.user.id);
+
+    if (!allowed) {
+      await supabase.auth.signOut();
+      throw new Error('Este usuário não possui acesso à administração da arena.');
+    }
+
+    isAdmin = true;
+    view = 'admin';
+    await loadBookings();
+    $('#loginDialog').close();
+    render();
+    toast('Acesso administrativo iniciado.');
+  } catch (error) {
+    console.error(error);
+    $('#loginError').textContent = error.message || 'E-mail ou senha inválidos.';
   }
-  isAdmin = true;
-  view = 'admin';
-  $('#loginDialog').close();
-  render();
-  toast('Acesso administrativo iniciado na demonstração.');
 });
 
-$('#adminLogout').onclick = () => {
+$('#adminLogout').onclick = async () => {
+  await supabase.auth.signOut();
   isAdmin = false;
   view = 'player';
-  render();
+  await refreshBookings(false);
   toast('Sessão administrativa encerrada.');
 };
 
-render();
+async function initialize() {
+  try {
+    await loadArena();
+
+    $('#bookingCourt').innerHTML = courts
+      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+      .join('');
+
+    $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>' + courts
+      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+      .join('');
+
+    await restoreAdminSession();
+    view = isAdmin ? 'admin' : 'player';
+    await loadBookings();
+    render();
+  } catch (error) {
+    console.error(error);
+    $('#title').textContent = 'Agenda temporariamente indisponível.';
+    $('#subtitle').textContent = 'Não foi possível conectar ao serviço de reservas. Tente novamente em alguns instantes.';
+    $('#newBooking').classList.add('hidden');
+    toast('Falha ao carregar a agenda.');
+  }
+}
+
+initialize();
 
 if (document.modelContext?.registerTool) {
   try {

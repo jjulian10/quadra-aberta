@@ -3,32 +3,41 @@
 Protótipo interativo de reservas de quadras, com visão do jogador e da gestão.
 
 ## Tecnologias
-HTML, CSS e JavaScript puros. Não precisa de Node.js, npm ou etapa de build.
+HTML, CSS, JavaScript, Vite e Supabase.
 
 ## Estrutura
-- index.html: página principal e formulários da demonstração.
+- index.html: página principal e formulários de reserva e acesso.
 - style.css: estilos e adaptação para celular.
-- app.js: agenda, acesso administrativo e interações de demonstração.
+- app.js: agenda, reservas persistentes, autenticação e painel administrativo.
+- supabase-config.js: URL e chave pública do projeto Supabase.
+- supabase/: schema, políticas RLS e documentação do banco.
 - netlify.toml: configuração de publicação.
 
 ## Testar
-Abra dist/index.html no navegador ou use a extensão Live Server no VS Code.
+
+```bash
+npm install
+npm run dev
+```
+
+Para validar a versão de produção, execute `npm run build`.
 
 ## Publicar pelo GitHub e Netlify
 1. Clone ou baixe o repositório.
 2. No Netlify, importe o projeto existente do GitHub e selecione o repositório.
-3. Use a branch main, sem comando de build, e a raiz do repositório como diretório de publicação.
+3. Use a branch main. O `netlify.toml` executa o build e publica a pasta `dist`.
 6. Publique. O Netlify fornecerá o endereço do site.
 7. Alterações enviadas à branch vinculada serão publicadas pela integração, enquanto a publicação automática estiver habilitada.
 
-Alternativa: para publicação manual, arraste a pasta dist para a área de deploy manual do Netlify. Essa alternativa não conecta o GitHub automaticamente.
+Alternativa: execute `npm run build` e arraste a pasta `dist` para a área de deploy manual do Netlify. Essa alternativa não conecta o GitHub automaticamente.
 
 ## Supabase
 
-A estrutura inicial do banco está em `supabase/schema.sql`. Ela inclui arenas, quadras, reservas, administradores, políticas de segurança e bloqueio de reservas sobrepostas. As instruções estão em `supabase/README.md`.
+O projeto está conectado ao Supabase e a estrutura do banco está em `supabase/schema.sql`. Ela inclui arenas, quadras, reservas, administradores, políticas de segurança e bloqueio de reservas sobrepostas. As instruções estão em `supabase/README.md`.
 
-## Limitações da demonstração
-Enquanto um projeto Supabase não estiver conectado, os dados fictícios continuam mantidos apenas na memória do navegador e atualizar a página reinicia tudo. O login administrativo permanece simulado no front-end, com as credenciais `admin@quadraaberta.test` e `admin123`; ainda não há Pix ou pagamentos reais. A visão pública do jogador mostra a agenda e permite solicitar horários. A área de agenda e o dashboard financeiro ficam disponíveis após o login administrativo.
+## Estado atual
+
+As quadras e reservas são persistidas no banco. A agenda pública mostra apenas ocupação, sem expor dados pessoais. A área administrativa usa Supabase Auth e permite confirmar, cancelar e registrar pagamentos. A integração automática com Pix ainda será adicionada.
 
 ## Dependência visual
 As fontes DM Sans e Manrope são carregadas pelo Google Fonts. Sem internet, o navegador usa fontes alternativas.

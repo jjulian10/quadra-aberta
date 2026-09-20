@@ -1,7 +1,23 @@
 -- Quadra Aberta — estrutura inicial do Supabase
 -- Execute este arquivo no SQL Editor de um projeto Supabase novo.
 
-create extension if not exists btree_gist;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
+do $$
+begin
+  if exists (
+    select 1
+    from pg_extension extension_record
+    join pg_namespace namespace_record
+      on namespace_record.oid = extension_record.extnamespace
+    where extension_record.extname = 'btree_gist'
+      and namespace_record.nspname = 'public'
+  ) then
+    alter extension btree_gist set schema extensions;
+  end if;
+end $$;
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
 
 do $$
 begin
@@ -40,6 +56,7 @@ create table if not exists public.courts (
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  unique (id, arena_id),
   unique (arena_id, name),
   check (closing_hour > opening_hour)
 );
@@ -55,7 +72,7 @@ create table if not exists public.arena_admins (
 create table if not exists public.bookings (
   id uuid primary key default gen_random_uuid(),
   arena_id uuid not null references public.arenas(id) on delete cascade,
-  court_id uuid not null references public.courts(id) on delete restrict,
+  court_id uuid not null,
   booking_date date not null,
   start_hour smallint not null check (start_hour between 0 and 23),
   duration smallint not null check (duration between 1 and 3),
@@ -67,6 +84,10 @@ create table if not exists public.bookings (
   notes text check (notes is null or char_length(notes) <= 500),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint booking_court_belongs_to_arena
+    foreign key (court_id, arena_id)
+    references public.courts(id, arena_id)
+    on delete restrict,
   constraint booking_inside_same_day check (start_hour + duration <= 24),
   constraint booking_no_time_overlap exclude using gist (
     court_id with =,
@@ -81,10 +102,19 @@ create index if not exists bookings_arena_date_idx
 create index if not exists bookings_status_idx
   on public.bookings (arena_id, status, payment_status);
 
+create index if not exists bookings_court_arena_idx
+  on public.bookings (court_id, arena_id);
+
+create index if not exists courts_arena_idx
+  on public.courts (arena_id);
+
+create index if not exists arena_admins_user_idx
+  on public.arena_admins (user_id);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
-set search_path = public
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -107,20 +137,24 @@ create trigger bookings_set_updated_at
 before update on public.bookings
 for each row execute function public.set_updated_at();
 
-create or replace function public.is_arena_admin(target_arena_id uuid)
+create or replace function private.is_arena_admin(target_arena_id uuid)
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
   select exists (
     select 1
     from public.arena_admins
     where arena_id = target_arena_id
-      and user_id = auth.uid()
+      and user_id = (select auth.uid())
   );
 $$;
+
+revoke all on function private.is_arena_admin(uuid) from public, anon;
+grant usage on schema private to authenticated;
+grant execute on function private.is_arena_admin(uuid) to authenticated;
 
 create or replace function public.get_public_schedule(
   target_arena_slug text,
@@ -134,8 +168,8 @@ returns table (
 )
 language sql
 stable
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
   select b.court_id, b.start_hour, b.duration, b.status
   from public.bookings b
@@ -157,8 +191,8 @@ create or replace function public.create_public_booking(
 )
 returns uuid
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
 declare
   selected_arena public.arenas%rowtype;
@@ -207,7 +241,10 @@ begin
     raise exception 'Horário fora do funcionamento da quadra.';
   end if;
 
+  new_booking_id := gen_random_uuid();
+
   insert into public.bookings (
+    id,
     arena_id,
     court_id,
     booking_date,
@@ -217,6 +254,7 @@ begin
     customer_phone,
     amount
   ) values (
+    new_booking_id,
     selected_arena.id,
     selected_court.id,
     target_date,
@@ -225,8 +263,7 @@ begin
     trim(target_customer_name),
     normalized_phone,
     selected_court.hourly_price * target_duration
-  )
-  returning id into new_booking_id;
+  );
 
   return new_booking_id;
 exception
@@ -243,35 +280,112 @@ alter table public.bookings enable row level security;
 drop policy if exists "Public can view active arenas" on public.arenas;
 create policy "Public can view active arenas"
 on public.arenas for select
-using (active or public.is_arena_admin(id));
+to anon
+using (active);
+
+drop policy if exists "Admins can view their arena" on public.arenas;
+create policy "Admins can view their arena"
+on public.arenas for select
+to authenticated
+using (active or private.is_arena_admin(id));
 
 drop policy if exists "Admins can update their arena" on public.arenas;
 create policy "Admins can update their arena"
 on public.arenas for update
-using (public.is_arena_admin(id))
-with check (public.is_arena_admin(id));
+to authenticated
+using (private.is_arena_admin(id))
+with check (private.is_arena_admin(id));
 
 drop policy if exists "Public can view active courts" on public.courts;
 create policy "Public can view active courts"
 on public.courts for select
-using (active or public.is_arena_admin(arena_id));
+to anon
+using (active);
+
+drop policy if exists "Admins can view their courts" on public.courts;
+create policy "Admins can view their courts"
+on public.courts for select
+to authenticated
+using (active or private.is_arena_admin(arena_id));
 
 drop policy if exists "Admins can manage courts" on public.courts;
-create policy "Admins can manage courts"
-on public.courts for all
-using (public.is_arena_admin(arena_id))
-with check (public.is_arena_admin(arena_id));
+drop policy if exists "Admins can create courts" on public.courts;
+create policy "Admins can create courts"
+on public.courts for insert
+to authenticated
+with check (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can update courts" on public.courts;
+create policy "Admins can update courts"
+on public.courts for update
+to authenticated
+using (private.is_arena_admin(arena_id))
+with check (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can delete courts" on public.courts;
+create policy "Admins can delete courts"
+on public.courts for delete
+to authenticated
+using (private.is_arena_admin(arena_id));
 
 drop policy if exists "Admins can view memberships" on public.arena_admins;
 create policy "Admins can view memberships"
 on public.arena_admins for select
-using (user_id = auth.uid() or public.is_arena_admin(arena_id));
+to authenticated
+using (user_id = (select auth.uid()) or private.is_arena_admin(arena_id));
 
 drop policy if exists "Admins can manage bookings" on public.bookings;
 create policy "Admins can manage bookings"
 on public.bookings for all
-using (public.is_arena_admin(arena_id))
-with check (public.is_arena_admin(arena_id));
+to authenticated
+using (private.is_arena_admin(arena_id))
+with check (private.is_arena_admin(arena_id));
+
+drop policy if exists "Public can view occupied slots" on public.bookings;
+create policy "Public can view occupied slots"
+on public.bookings for select
+to anon
+using (
+  status in ('pending', 'confirmed')
+  and exists (
+    select 1
+    from public.arenas
+    where arenas.id = bookings.arena_id
+      and arenas.active
+  )
+);
+
+drop policy if exists "Public can request bookings" on public.bookings;
+create policy "Public can request bookings"
+on public.bookings for insert
+to anon
+with check (
+  status = 'pending'
+  and payment_status = 'pending'
+  and booking_date >= current_date
+  and exists (
+    select 1
+    from public.courts
+    join public.arenas on arenas.id = courts.arena_id
+    where courts.id = bookings.court_id
+      and courts.arena_id = bookings.arena_id
+      and courts.active
+      and arenas.active
+      and bookings.start_hour >= courts.opening_hour
+      and bookings.start_hour + bookings.duration <= courts.closing_hour
+      and bookings.amount = courts.hourly_price * bookings.duration
+  )
+);
+
+grant usage on schema public to anon, authenticated;
+grant select on public.arenas, public.courts to anon, authenticated;
+grant select (arena_id, court_id, booking_date, start_hour, duration, status)
+  on public.bookings to anon;
+grant insert on public.bookings to anon;
+grant select on public.arena_admins to authenticated;
+grant select, insert, update, delete on public.bookings to authenticated;
+grant insert, update, delete on public.courts to authenticated;
+grant update on public.arenas to authenticated;
 
 revoke all on function public.get_public_schedule(text, date) from public;
 revoke all on function public.create_public_booking(text, uuid, date, smallint, smallint, text, text) from public;
