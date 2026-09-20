@@ -571,8 +571,9 @@ $('#bookingForm').addEventListener('submit', async (event) => {
   }
 });
 
-$('#dialogActions').addEventListener('click', async (event) => {
-  const action = event.target.dataset.action;
+$('#bookingDialog').addEventListener('click', async (event) => {
+  const actionButton = event.target.closest('button[data-action]');
+  const action = actionButton?.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
   if (action === 'support') { openArenaSupport(); return; }
@@ -581,12 +582,21 @@ $('#dialogActions').addEventListener('click', async (event) => {
     if (!code) return;
     try {
       await navigator.clipboard.writeText(code);
-      event.target.textContent = 'Copiado!';
+      actionButton.textContent = 'Copiado!';
       toast('Código Pix copiado.');
     } catch {
-      $('#pixCopyCode').select();
-      document.execCommand('copy');
-      toast('Código Pix copiado.');
+      const input = $('#pixCopyCode');
+      input.focus();
+      input.select();
+      input.setSelectionRange(0, code.length);
+      let copied = false;
+      try { copied = document.execCommand('copy'); } catch {}
+      if (copied) {
+        actionButton.textContent = 'Copiado!';
+        toast('Código Pix copiado.');
+      } else {
+        toast('Selecione o código e use Copiar no menu do celular ou Ctrl+C no computador.');
+      }
     }
     return;
   }
