@@ -85,7 +85,7 @@
 <div id="schedule">
 </div>
 <div class="schedule-footer">
-<span>Reservas de 1 hora • Valores por quadra</span>
+<span>Reservas de 1 a 3 horas • Valores por quadra / hora</span>
 <span id="dateCaption">
 </span>
 </div>
@@ -143,6 +143,11 @@
 <label>Nome do responsável<input name="name" id="customer" required maxlength="70" placeholder="Ex.: Julian Matheus" autocomplete="name">
 </label>
 <div class="field-grid">
+<label>Duração<select id="bookingDuration" required>
+<option value="1">1 hora</option>
+<option value="2">2 horas</option>
+<option value="3">3 horas</option>
+</select></label>
 <label>Quadra<select id="bookingCourt">
 <option value="0">Quadra 01 · Vôlei</option>
 <option value="1">Quadra 02 · Beach tennis</option>
