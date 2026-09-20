@@ -10,7 +10,8 @@ const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 const today = localDate(new Date());
 
 let day = today;
-let view = 'admin';
+let view = 'player';
+let isAdmin = false;
 let filter = 'all';
 let selectedId = null;
 let counter = 20;
@@ -36,6 +37,16 @@ function toast(message) {
   $('#toast').style.display = 'block';
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => { $('#toast').style.display = 'none'; }, 4200);
+}
+
+function syncAccessControls() {
+  const adminNav = document.querySelector('[data-view="admin"]');
+  const playerNav = document.querySelector('[data-view="player"]');
+  adminNav.classList.toggle('hidden', !isAdmin);
+  document.querySelector('[data-view="finance"]').classList.toggle('hidden', !isAdmin);
+  playerNav.classList.toggle('hidden', isAdmin);
+  $('#adminLogin').classList.toggle('hidden', isAdmin);
+  $('#adminLogout').classList.toggle('hidden', !isAdmin);
 }
 
 function ensureEnhancements() {
@@ -67,13 +78,13 @@ function periodBookings(period) {
 function renderProfitPanel(list) {
   const panel = $('#profitPanel');
   if (!panel) return;
-  if (view !== 'admin') { panel.style.display = 'none'; return; }
+  if (view !== 'finance' || !isAdmin) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
   panel.style.display = 'block';
   const paid = list.filter((booking) => booking.paid);
   const pending = list.filter((booking) => !booking.paid);
   const total = paid.reduce((sum, booking) => sum + courts[booking.court].price, 0);
   const expected = list.reduce((sum, booking) => sum + courts[booking.court].price, 0);
-  const periodLabel = { day: 'Hoje', week: 'Esta semana', month: 'Este mês' }[profitPeriod];
+  const periodLabel = { day: 'Data selecionada', week: 'Últimos 7 dias', month: 'Últimos 30 dias' }[profitPeriod];
   const byCourt = courts.map((court, index) => ({
     name: court.name,
     value: paid.filter((booking) => booking.court === index).reduce((sum, booking) => sum + court.price, 0)
@@ -82,7 +93,7 @@ function renderProfitPanel(list) {
   const paidPercent = expected ? Math.round(total / expected * 100) : 0;
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
-      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard de lucros</h2><p style="font-size:13px;margin:5px 0 0">Indicadores atualizados conforme as reservas e pagamentos.</p></div>
+      <div><p class="eyebrow" style="margin-bottom:7px">DESEMPENHO FINANCEIRO</p><h2 style="margin:0">Dashboard financeiro</h2><p style="font-size:13px;margin:5px 0 0">Recebimentos por data da reserva; não representa lucro líquido.</p><label>Data de referência<input type="date" id="financeDate" value="${day}"></label></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${['day','week','month'].map((period) => `<button type="button" data-profit-period="${period}" style="border:1px solid #dfe7df;border-radius:7px;background:${period === profitPeriod ? '#194d3e' : '#fff'};color:${period === profitPeriod ? '#fff' : '#17362f'};padding:8px 12px;font-size:12px">${{ day: 'Dia', week: 'Semana', month: 'Mês' }[period]}</button>`).join('')}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px;margin-top:20px;align-items:center">
@@ -102,12 +113,20 @@ function renderProfitPanel(list) {
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
     button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
   });
+  $('#financeDate').onchange = (event) => { if (event.target.value) { day = event.target.value; render(); } };
 }
 
-function setView(nextView) { view = nextView; render(); }
+function setView(nextView) {
+  if (!['admin', 'finance', 'player'].includes(nextView)) return;
+  if (nextView !== 'player' && !isAdmin) return;
+  if (nextView === 'player' && isAdmin) return;
+  view = nextView;
+  render();
+}
 
 function render() {
   ensureEnhancements();
+  syncAccessControls();
   $('#date').value = day;
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   const admin = view === 'admin';
@@ -144,6 +163,17 @@ function render() {
   $('#requests').innerHTML = pending.length
     ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${courts[booking.court].name} · ${booking.hour}:00–${booking.hour + 1}:00 · ${money(courts[booking.court].price)}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
     : '<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
+  if (!admin) $('#requests').innerHTML = '';
+  const finance = view === 'finance' && isAdmin;
+  document.querySelector('.workspace').classList.toggle('hidden', finance);
+  $('#stats').classList.toggle('hidden', finance);
+  $('#newBooking').classList.toggle('hidden', finance);
+  if (finance) {
+    $('#crumb').textContent = 'Financeiro';
+    $('#eyebrow').textContent = 'CONTROLE DA ARENA';
+    $('#title').textContent = 'Seu financeiro, em um só lugar.';
+    $('#subtitle').textContent = 'Acompanhe receitas e pagamentos por dia, semana ou mês.';
+  }
 }
 
 function updateHours(preferred) {
@@ -196,9 +226,9 @@ function dispararMensagem(booking) {
 
 function showConfirmation(booking) {
   $('#formFields').hidden = true;
-  $('#dialogTitle').textContent = 'Horário reservado!';
+  $('#dialogTitle').textContent = booking.status === 'pending' ? 'Solicitação enviada!' : 'Horário reservado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + 1}:00`;
-  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Guarde estas informações e chegue com alguns minutos de antecedência.</p></div><p><strong>Observações</strong></p><p>• A reserva dura 1 hora.<br>• Em uma versão real, o pagamento PIX será validado automaticamente.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>${booking.status === 'pending' ? 'Seu pedido foi enviado para a arena.' : `Reserva confirmada para ${esc(booking.name)}.`}</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">${booking.status === 'pending' ? 'Aguarde a confirmação do responsável pela quadra.' : 'Guarde estas informações e chegue com alguns minutos de antecedência.'}</p></div><p><strong>Observações</strong></p><p>• A reserva dura 1 hora.<br>• Em uma versão real, o pagamento PIX será validado automaticamente.<br>• Para cancelar ou alterar, entre em contato com a arena pelo celular informado.</p>`;
   $('#price').textContent = money(courts[booking.court].price);
   $('#dialogActions').innerHTML = '<button type="button" class="primary" data-action="close-confirmation">Concluir</button>';
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
@@ -217,10 +247,10 @@ $('#bookingForm').addEventListener('submit', (event) => {
   if (!name) { $('#formError').textContent = 'Informe o nome do responsável.'; return; }
   if (!phone || phone.replace(/\D/g, '').length < 10) { $('#formError').textContent = 'Informe um celular válido com DDD.'; return; }
   if (rawHour === '' || !hours.includes(hour) || hour + duration > 23 || !courts[court] || occupied) { $('#formError').textContent = 'Este horário não está disponível. Escolha outro.'; return; }
-  const booking = { id: ++counter, date: day, court, hour, duration, name, phone, status: 'confirmed', paid: false };
+  const booking = { id: ++counter, date: day, court, hour, duration, name, phone, status: view === 'admin' ? 'confirmed' : 'pending', paid: false };
   bookings.push(booking);
   render();
-  if (view === 'player') { showConfirmation(booking); dispararMensagem(booking); }
+  if (view === 'player') { showConfirmation(booking); }
   else { $('#bookingDialog').close(); toast('Reserva confirmada na demonstração.'); }
 });
 
@@ -228,7 +258,7 @@ $('#dialogActions').addEventListener('click', (event) => {
   const action = event.target.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
-  if (!action || !booking) return;
+  if (!action || !booking || !isAdmin || view !== 'admin') return;
   if (action === 'confirm') { booking.status = 'confirmed'; toast('Reserva confirmada.'); }
   if (action === 'pay') { booking.paid = true; toast('Pagamento registrado na demonstração.'); }
   if (action === 'cancel') {
@@ -243,8 +273,17 @@ $('#dialogActions').addEventListener('click', (event) => {
 $('#bookingCourt').addEventListener('change', () => updateHours());
 $('#closeDialog').onclick = () => $('#bookingDialog').close();
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
-$('#seePlayer').onclick = () => { setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-document.querySelectorAll('[data-view]').forEach((button) => { button.onclick = () => setView(button.dataset.view); });
+$('#seePlayer').onclick = () => { isAdmin = false; setView('player'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+document.querySelectorAll('[data-view]').forEach((button) => {
+  button.onclick = () => {
+    if (button.dataset.view === 'admin' && !isAdmin) {
+      $('#loginDialog').showModal();
+      return;
+    }
+    if (button.dataset.view === 'player' && isAdmin) return;
+    setView(button.dataset.view);
+  };
+});
 $('#schedule').addEventListener('click', (event) => {
   const button = event.target.closest('[data-court]');
   if (!button) return;
@@ -268,6 +307,37 @@ function moveDay(amount) {
 $('#prevDay').onclick = () => moveDay(-1);
 $('#nextDay').onclick = () => moveDay(1);
 $('#today').onclick = () => { day = today; render(); };
+
+$('#adminLogin').onclick = () => {
+  $('#loginError').textContent = '';
+  $('#loginForm').reset();
+  $('#loginDialog').showModal();
+};
+
+$('#closeLogin').onclick = () => $('#loginDialog').close();
+
+$('#loginForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const email = $('#adminEmail').value.trim().toLowerCase();
+  const password = $('#adminPassword').value;
+  if (email !== 'admin@quadraaberta.test' || password !== 'admin123') {
+    $('#loginError').textContent = 'E-mail ou senha inválidos.';
+    return;
+  }
+  isAdmin = true;
+  view = 'admin';
+  $('#loginDialog').close();
+  render();
+  toast('Acesso administrativo iniciado na demonstração.');
+});
+
+$('#adminLogout').onclick = () => {
+  isAdmin = false;
+  view = 'player';
+  render();
+  toast('Sessão administrativa encerrada.');
+};
+
 render();
 
 if (document.modelContext?.registerTool) {
