@@ -28,11 +28,17 @@ let lastPlayerBooking = null;
 let paymentPollTimer = null;
 
 let bookings = [];
+let scheduleBlocks = [];
 
 const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const labelDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
 const getBooking = (court, hour, date = day) => bookings.find((booking) => booking.date === date && booking.court === court && hour >= booking.hour && hour < booking.hour + booking.duration);
+const getScheduleBlock = (court, hour, date = day) => scheduleBlocks.find((block) =>
+  block.date === date &&
+  (block.court === null || block.court === court) &&
+  (block.fullDay || (hour >= block.hour && hour < block.hour + block.duration))
+);
 
 const durationLabel = (duration) => `${duration} hora${duration > 1 ? 's' : ''}`;
 const bookingTotal = (booking) => Number(
@@ -53,6 +59,16 @@ const mapBooking = (booking, isPublic = false) => ({
   paid: booking.payment_status === 'paid',
   depositAmount: booking.deposit_amount === undefined || booking.deposit_amount === null ? undefined : Number(booking.deposit_amount),
   amount: booking.amount === undefined ? undefined : Number(booking.amount)
+});
+
+const mapScheduleBlock = (block, isPublic = false) => ({
+  id: block.id ?? `public-block-${block.court_id}-${block.start_hour}`,
+  date: block.block_date ?? day,
+  court: block.court_id ? courts.findIndex((court) => court.id === block.court_id) : null,
+  hour: block.start_hour === null || block.start_hour === undefined ? null : Number(block.start_hour),
+  duration: block.duration === null || block.duration === undefined ? null : Number(block.duration),
+  fullDay: block.start_hour === null || block.start_hour === undefined,
+  reason: isPublic ? '' : (block.reason || '')
 });
 
 async function loadArena() {
@@ -125,27 +141,38 @@ async function loadBookings() {
     const firstDate = new Date(reference);
     firstDate.setDate(firstDate.getDate() - 29);
 
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
-      .eq('arena_id', arena.id)
-      .gte('booking_date', localDate(firstDate))
-      .lte('booking_date', day)
-      .in('status', ['pending', 'confirmed'])
-      .order('start_hour');
+    const [bookingResult, blockResult] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
+        .eq('arena_id', arena.id)
+        .gte('booking_date', localDate(firstDate))
+        .lte('booking_date', day)
+        .in('status', ['pending', 'confirmed'])
+        .order('start_hour'),
+      supabase
+        .from('schedule_blocks')
+        .select('id, block_date, court_id, start_hour, duration, reason')
+        .eq('arena_id', arena.id)
+        .eq('block_date', day)
+        .order('start_hour', { nullsFirst: true })
+    ]);
 
-    if (error) throw error;
-    bookings = data.map((booking) => mapBooking(booking));
+    if (bookingResult.error) throw bookingResult.error;
+    if (blockResult.error) throw blockResult.error;
+    bookings = bookingResult.data.map((booking) => mapBooking(booking));
+    scheduleBlocks = blockResult.data.map((block) => mapScheduleBlock(block));
     return;
   }
 
-  const { data, error } = await supabase.rpc('get_public_schedule', {
+  const { data, error } = await supabase.rpc('get_public_schedule_v2', {
     target_arena_slug: ARENA_SLUG,
     target_date: day
   });
 
   if (error) throw error;
-  bookings = data.map((booking) => mapBooking(booking, true));
+  bookings = data.filter((entry) => entry.entry_type === 'booking').map((booking) => mapBooking(booking, true));
+  scheduleBlocks = data.filter((entry) => entry.entry_type === 'block').map((block) => mapScheduleBlock(block, true));
 }
 
 async function refreshBookings(showError = true) {
@@ -181,6 +208,19 @@ async function syncBookingsRealtime() {
         realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
       }
     )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'schedule_blocks',
+        filter: `arena_id=eq.${arena.id}`
+      },
+      () => {
+        clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
+      }
+    )
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error(`Falha na atualização em tempo real: ${status}`);
@@ -196,7 +236,7 @@ function isAvailable(court, hour, duration) {
     hour >= selectedCourt.openingHour &&
     hour + duration <= selectedCourt.closingHour &&
     Array.from({ length: duration }, (_, offset) => hour + offset)
-      .every((slot) => hours.includes(slot) && !getBooking(court, slot));
+      .every((slot) => hours.includes(slot) && !getBooking(court, slot) && !getScheduleBlock(court, slot));
 }
 
 function toast(message) {
@@ -214,6 +254,7 @@ function syncAccessControls() {
   playerNav.classList.toggle('hidden', isAdmin);
   $('#adminLogin').classList.toggle('hidden', isAdmin);
   $('#adminLogout').classList.toggle('hidden', !isAdmin);
+  $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin');
 }
 
 function ensureEnhancements() {
@@ -314,6 +355,38 @@ function setView(nextView) {
   render();
 }
 
+function blockedHoursForDay() {
+  return scheduleBlocks.reduce((total, block) => {
+    const affectedCourts = block.court === null
+      ? courts
+      : [courts[block.court]].filter(Boolean);
+
+    return total + affectedCourts.reduce((sum, court) => {
+      if (block.fullDay) return sum + court.closingHour - court.openingHour;
+      const start = Math.max(block.hour, court.openingHour);
+      const end = Math.min(block.hour + block.duration, court.closingHour);
+      return sum + Math.max(end - start, 0);
+    }, 0);
+  }, 0);
+}
+
+function renderScheduleBlocks() {
+  const panel = $('#blockPanel');
+  const adminAgenda = isAdmin && view === 'admin';
+  panel.classList.toggle('hidden', !adminAgenda);
+  if (!adminAgenda) return;
+
+  $('#blockCount').textContent = scheduleBlocks.length;
+  $('#blockList').innerHTML = scheduleBlocks.length
+    ? scheduleBlocks.map((block) => {
+      const courtLabel = block.court === null ? 'Todas as quadras' : courts[block.court]?.name || 'Quadra';
+      const periodLabel = block.fullDay ? 'Dia inteiro' : `${block.hour}:00–${block.hour + block.duration}:00`;
+      const reason = block.reason ? `<small class="block-reason">“${esc(block.reason)}”</small>` : '<small>Sem observação</small>';
+      return `<div class="block-row"><span class="block-icon">⊘</span><div class="block-info"><strong>${esc(courtLabel)} · ${periodLabel}</strong>${reason}</div><button type="button" data-remove-block="${block.id}">Desbloquear</button></div>`;
+    }).join('')
+    : '<div class="empty">Nenhum bloqueio cadastrado nesta data.</div>';
+}
+
 function render() {
   ensureEnhancements();
   syncAccessControls();
@@ -331,14 +404,15 @@ function render() {
   const confirmed = list.filter((booking) => booking.status === 'confirmed');
   const pending = list.filter((booking) => booking.status === 'pending');
   const occupiedHours = list.reduce((sum, booking) => sum + booking.duration, 0);
+  const blockedHours = blockedHoursForDay();
   const totalHours = courts.reduce(
     (sum, court) => sum + court.closingHour - court.openingHour,
     0
   );
   const startingPrice = Math.min(...courts.map((court) => court.price));
   $('#stats').innerHTML = (admin
-    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round(occupiedHours / totalHours * 100) + '%', `Dos ${totalHours} horários disponíveis`, '◷'], ['Recebido', money(list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0)), 'Valor efetivamente recebido', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
-    : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', totalHours - occupiedHours, 'Na data selecionada', '◌']])
+    ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round((occupiedHours + blockedHours) / totalHours * 100) + '%', `${blockedHours}h bloqueadas nesta data`, '◷'], ['Recebido', money(list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0)), 'Valor efetivamente recebido', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
+    : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', Math.max(totalHours - occupiedHours - blockedHours, 0), 'Na data selecionada', '◌']])
     .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
   renderProfitPanel(periodBookings(profitPeriod));
 
@@ -347,6 +421,11 @@ function render() {
   $('#schedule').innerHTML = `<div class="grid-head"><span></span>${columns.map((court) => `<div class="court-head"><strong>${esc(court.name)}</strong><small>${esc(court.sport)} · ${money(court.price)}/h</small></div>`).join('')}</div>` +
     hours.map((hour) => `<div class="time-row"><div class="hour">${hour}:00</div>${columns.map((court) => {
       const booking = getBooking(court.index, hour);
+      const block = getScheduleBlock(court.index, hour);
+      if (block) {
+        const adminLabel = block.reason || (block.fullDay ? 'Dia bloqueado' : 'Horário bloqueado');
+        return `<button class="slot schedule-blocked ${!admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" data-block="${block.id}" ${!admin ? 'disabled' : ''}><strong>${admin ? esc(adminLabel) : 'Indisponível'}</strong><small>${admin ? 'Bloqueado pelo administrador' : 'Horário ocupado'}</small></button>`;
+      }
       const label = booking ? (admin ? esc(booking.name) : 'Indisponível') : '+ Reservar';
       const detail = booking ? (admin ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : booking.paidAmount > 0 ? 'Confirmada · Parcial' : 'Confirmada · A pagar') : 'Horário ocupado') : 'Disponível';
       return `<button class="slot ${booking ? (booking.status === 'pending' ? 'waiting' : 'booked') : ''} ${booking && !admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" ${booking && !admin ? 'disabled' : ''}><strong>${label}</strong><small>${detail}</small></button>`;
@@ -359,6 +438,7 @@ function render() {
     ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${esc(courts[booking.court].name)} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${money(bookingTotal(booking))}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
     : '<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
   if (!admin) $('#requests').innerHTML = '';
+  renderScheduleBlocks();
   const finance = view === 'finance' && isAdmin;
   document.querySelector('.workspace').classList.toggle('hidden', finance);
   $('#stats').classList.toggle('hidden', finance);
@@ -402,6 +482,32 @@ function openBooking(court = 0, hour, duration = 1) {
   $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Gerar Pix de R$ 0,01'}</button>`;
   updateHours(hour);
   $('#bookingDialog').showModal();
+}
+
+function updateBlockForm() {
+  const fullDay = $('#blockType').value === 'day';
+  const duration = Number($('#blockDuration').value);
+  const selectedCourt = $('#blockCourt').value;
+  const closingHour = selectedCourt === 'all'
+    ? Math.max(...courts.map((court) => court.closingHour))
+    : courts[Number(selectedCourt)]?.closingHour;
+  const validHours = hours.filter((hour) => hour + duration <= closingHour);
+
+  $('#blockTimeFields').classList.toggle('hidden', fullDay);
+  $('#blockHour').required = !fullDay;
+  $('#blockDuration').required = !fullDay;
+  $('#blockHour').innerHTML = validHours.map((hour) => `<option value="${hour}">${hour}:00</option>`).join('');
+}
+
+function openBlockDialog(court = filter === 'all' ? 'all' : filter, hour) {
+  $('#blockForm').reset();
+  $('#blockError').textContent = '';
+  $('#blockDialogInfo').textContent = `${labelDate(day)} · Arena Vila`;
+  $('#blockCourt').value = String(court);
+  $('#blockType').value = 'time';
+  updateBlockForm();
+  if (hours.includes(Number(hour))) $('#blockHour').value = String(hour);
+  $('#blockDialog').showModal();
 }
 
 function openDetail(id) {
@@ -698,6 +804,68 @@ $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#booki
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#closeDialog').onclick = () => { clearInterval(paymentPollTimer); $('#bookingDialog').close(); };
 $('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
+$('#blockSchedule').onclick = () => openBlockDialog();
+$('#closeBlockDialog').onclick = () => $('#blockDialog').close();
+$('#blockType').onchange = updateBlockForm;
+$('#blockCourt').onchange = updateBlockForm;
+$('#blockDuration').onchange = updateBlockForm;
+
+$('#blockForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isAdmin || view !== 'admin') return;
+
+  const fullDay = $('#blockType').value === 'day';
+  const courtValue = $('#blockCourt').value;
+  const reason = $('#blockReason').value.trim();
+  const submitButton = $('#submitBlock');
+  $('#blockError').textContent = '';
+  submitButton.disabled = true;
+  submitButton.textContent = 'Bloqueando...';
+
+  try {
+    const { error } = await supabase.from('schedule_blocks').insert({
+      arena_id: arena.id,
+      court_id: courtValue === 'all' ? null : courts[Number(courtValue)].id,
+      block_date: day,
+      start_hour: fullDay ? null : Number($('#blockHour').value),
+      duration: fullDay ? null : Number($('#blockDuration').value),
+      reason: reason || null
+    });
+
+    if (error) throw error;
+    $('#blockDialog').close();
+    await refreshBookings(false);
+    toast(fullDay ? 'Dia bloqueado com sucesso.' : 'Horário bloqueado com sucesso.');
+  } catch (error) {
+    console.error(error);
+    $('#blockError').textContent = error.message?.includes('Existem reservas ativas')
+      ? 'Já existe uma reserva ativa nesse período. Cancele a reserva antes de bloquear.'
+      : 'Não foi possível criar o bloqueio. Verifique o período e tente novamente.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Bloquear agenda';
+  }
+});
+
+$('#blockList').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-remove-block]');
+  if (!button || !isAdmin) return;
+  if (!confirm('Desbloquear este período e permitir novas reservas?')) return;
+
+  try {
+    const { error } = await supabase
+      .from('schedule_blocks')
+      .delete()
+      .eq('id', button.dataset.removeBlock)
+      .eq('arena_id', arena.id);
+    if (error) throw error;
+    await refreshBookings(false);
+    toast('Período desbloqueado.');
+  } catch (error) {
+    console.error(error);
+    toast('Não foi possível remover o bloqueio.');
+  }
+});
 $('#seePlayer').onclick = async () => {
   await supabase.auth.signOut();
   isAdmin = false;
@@ -720,6 +888,11 @@ $('#schedule').addEventListener('click', (event) => {
   if (!button) return;
   const court = Number(button.dataset.court);
   const hour = Number(button.dataset.hour);
+  const block = getScheduleBlock(court, hour);
+  if (block) {
+    toast(block.reason ? `Bloqueado: ${block.reason}` : 'Este período está bloqueado.');
+    return;
+  }
   const booking = getBooking(court, hour);
   booking ? openDetail(booking.id) : openBooking(court, hour);
 });
@@ -862,6 +1035,10 @@ async function initialize() {
       .join('');
 
     $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>' + courts
+      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+      .join('');
+
+    $('#blockCourt').innerHTML = '<option value="all">Todas as quadras</option>' + courts
       .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
       .join('');
 

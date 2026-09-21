@@ -48,7 +48,10 @@
 <h1 id="title">Bom jogo começa<br class="mobile-only"> com uma boa agenda.</h1>
 <p id="subtitle">Todos os horários. Cada reserva. Tudo no seu lugar.</p>
 </div>
+<div class="page-actions">
+<button class="secondary hidden" id="blockSchedule" type="button">⊘ Bloquear agenda</button>
 <button class="primary" id="newBooking">＋ Nova reserva</button>
+</div>
 </div>
 <section class="stats" id="stats">
 </section>
@@ -89,6 +92,17 @@
 <span id="dateCaption">
 </span>
 </div>
+</section>
+<section class="schedule-blocks hidden" id="blockPanel">
+<div class="section-heading block-heading">
+<div>
+<p class="eyebrow">GESTÃO DE DISPONIBILIDADE</p>
+<h2>Bloqueios da agenda</h2>
+<p>Horários reservados para manutenção, eventos ou indisponibilidade da arena.</p>
+</div>
+<span id="blockCount" class="count"></span>
+</div>
+<div id="blockList"></div>
 </section>
 <section class="bottom-grid" id="bottom">
 <div class="requests">
@@ -189,6 +203,25 @@
 </p>
 <div id="dialogActions">
 </div>
+</form>
+</dialog>
+<dialog id="blockDialog">
+<form id="blockForm">
+<div class="dialog-heading">
+<div><p class="eyebrow">GESTÃO DA AGENDA</p><h2>Bloquear disponibilidade</h2></div>
+<button type="button" id="closeBlockDialog" class="close" aria-label="Fechar">×</button>
+</div>
+<p class="login-intro" id="blockDialogInfo"></p>
+<label>Tipo de bloqueio<select id="blockType" required><option value="time">Horário específico</option><option value="day">Dia inteiro</option></select></label>
+<label>Aplicar em<select id="blockCourt" required></select></label>
+<div class="field-grid" id="blockTimeFields">
+<label>Horário inicial<select id="blockHour" required></select></label>
+<label>Duração<select id="blockDuration" required><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select></label>
+</div>
+<label>Observação (opcional)<textarea id="blockReason" maxlength="300" rows="3" placeholder="Ex.: manutenção da iluminação, evento interno..."></textarea></label>
+<p class="form-note">A observação fica disponível apenas para administradores. O jogador verá o período como indisponível.</p>
+<p id="blockError" role="alert"></p>
+<div class="dialog-actions"><button class="primary" id="submitBlock" type="submit">Bloquear agenda</button></div>
 </form>
 </dialog>
 <div class="toast" id="toast" role="status">
