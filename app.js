@@ -191,7 +191,37 @@ async function syncBookingsRealtime() {
     bookingsRealtimeChannel = null;
   }
 
-  if (!isAdmin || !arena) return;
+  if (!arena) return;
+
+  const scheduleRefresh = () => {
+    clearTimeout(realtimeRefreshTimer);
+    realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
+  };
+
+  if (!isAdmin) {
+    bookingsRealtimeChannel = supabase
+      .channel(`public-schedule-${arena.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_change_events',
+          filter: `arena_id=eq.${arena.id}`
+        },
+        (payload) => {
+          const changedDate = payload.new?.schedule_date || payload.old?.schedule_date;
+          if (changedDate && changedDate !== day) return;
+          scheduleRefresh();
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(`Falha na atualização em tempo real: ${status}`);
+        }
+      });
+    return;
+  }
 
   bookingsRealtimeChannel = supabase
     .channel(`admin-bookings-${arena.id}`)
@@ -203,10 +233,7 @@ async function syncBookingsRealtime() {
         table: 'bookings',
         filter: `arena_id=eq.${arena.id}`
       },
-      () => {
-        clearTimeout(realtimeRefreshTimer);
-        realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
-      }
+      scheduleRefresh
     )
     .on(
       'postgres_changes',
@@ -216,10 +243,7 @@ async function syncBookingsRealtime() {
         table: 'schedule_blocks',
         filter: `arena_id=eq.${arena.id}`
       },
-      () => {
-        clearTimeout(realtimeRefreshTimer);
-        realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
-      }
+      scheduleRefresh
     )
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -870,6 +894,7 @@ $('#seePlayer').onclick = async () => {
   await supabase.auth.signOut();
   isAdmin = false;
   view = 'player';
+  await syncBookingsRealtime();
   await refreshBookings(false);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
