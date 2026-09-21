@@ -390,7 +390,6 @@ grant update on public.arenas to authenticated;
 revoke all on function public.get_public_schedule(text, date) from public;
 revoke all on function public.create_public_booking(text, uuid, date, smallint, smallint, text, text) from public;
 grant execute on function public.get_public_schedule(text, date) to anon, authenticated;
-grant execute on function public.create_public_booking(text, uuid, date, smallint, smallint, text, text) to anon, authenticated;
 
 -- Segurança da API pública: dados pessoais de reservas só ficam disponíveis
 -- para administradores autenticados. A agenda e novas solicitações passam por
@@ -624,9 +623,14 @@ revoke all on function public.create_public_booking(text, uuid, date, smallint, 
 
 grant usage on schema private to anon, authenticated;
 grant execute on function private.get_public_schedule_impl(text, date) to anon, authenticated;
-grant execute on function private.create_public_booking_impl(text, uuid, date, smallint, smallint, text, text) to anon, authenticated;
 grant execute on function public.get_public_schedule(text, date) to anon, authenticated;
-grant execute on function public.create_public_booking(text, uuid, date, smallint, smallint, text, text) to anon, authenticated;
+
+-- O fluxo público de criação de reservas é feito exclusivamente pela Edge
+-- Function de Pix. A função legada permanece sem EXECUTE para clientes.
+revoke all on function private.create_public_booking_impl(text, uuid, date, smallint, smallint, text, text)
+  from public, anon, authenticated;
+revoke all on function public.create_public_booking(text, uuid, date, smallint, smallint, text, text)
+  from public, anon, authenticated;
 
 alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from anon, authenticated;
