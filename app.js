@@ -285,13 +285,13 @@ function ensureEnhancements() {
   const customer = $('#customer');
   if (customer && !$('#customerPhone')) {
     const phoneLabel = document.createElement('label');
-    phoneLabel.innerHTML = 'Celular do responsável<input name="phone" id="customerPhone" required maxlength="20" placeholder="Ex.: (69) 99999-9999" autocomplete="tel" inputmode="tel">';
+    phoneLabel.innerHTML = 'Celular do responsável<input name="phone" id="customerPhone" required maxlength="20" autocomplete="tel" inputmode="tel">';
     customer.closest('label').after(phoneLabel);
   }
   if (customer && !$('#customerEmail')) {
     const emailLabel = document.createElement('label');
     emailLabel.id = 'customerEmailLabel';
-    emailLabel.innerHTML = 'E-mail para o pagamento<input name="email" id="customerEmail" type="email" required maxlength="120" placeholder="Ex.: jogador@email.com" autocomplete="email">';
+    emailLabel.innerHTML = 'E-mail para o pagamento<input name="email" id="customerEmail" type="email" required maxlength="120" autocomplete="email">';
     $('#customerPhone').closest('label').after(emailLabel);
   }
   if (!$('#profitPanel')) {
