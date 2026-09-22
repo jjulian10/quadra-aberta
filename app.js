@@ -1238,6 +1238,13 @@ async function switchArena(nextSlug) {
     activeArenaSlug = previousSlug;
     const select = $('#arenaSelect');
     if (select) select.value = previousSlug;
+
+    if (arena?.slug === previousSlug) {
+      populateCourtSelects();
+      await syncBookingsRealtime();
+      render();
+    }
+
     toast('Não foi possível trocar de arena. Tente novamente.');
   }
 }
