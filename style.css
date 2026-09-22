@@ -290,3 +290,9 @@ aside{background:linear-gradient(165deg,#0c3329 0%,#195641 70%,#27694b 100%);box
   border-color:transparent;
   transform:none;
 }
+
+
+/* O contato da arena pertence somente à visão pública do jogador */
+body.admin-session .arena-footer-contact{
+  display:none!important;
+}
