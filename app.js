@@ -37,6 +37,7 @@ let lastPlayerBooking = null;
 let paymentPollTimer = null;
 let reservationPortalTimer = null;
 let reservationPortalData = null;
+let waitlistSelection = null;
 
 let bookings = [];
 let scheduleBlocks = [];
@@ -952,8 +953,13 @@ function render() {
         return `<button class="slot schedule-blocked ${!admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" data-block="${block.id}" ${!admin ? 'disabled' : ''}><strong>${admin ? esc(adminLabel) : 'Indisponível'}</strong><small>${admin ? 'Bloqueado pelo administrador' : 'Horário ocupado'}</small></button>`;
       }
       const label = booking ? (admin ? esc(booking.name) : 'Indisponível') : '+ Reservar';
-      const detail = booking ? (admin ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : booking.paidAmount > 0 ? 'Confirmada · Parcial' : 'Confirmada · A pagar') : 'Horário ocupado') : 'Disponível';
-      return `<button class="slot ${booking ? (booking.status === 'pending' ? 'waiting' : 'booked') : ''} ${booking && !admin ? 'blocked' : ''}" data-court="${court.index}" data-hour="${hour}" ${booking && !admin ? 'disabled' : ''}><strong>${label}</strong><small>${detail}</small></button>`;
+      const detail = booking
+        ? (admin
+          ? (booking.status === 'pending' ? 'A confirmar' : booking.paid ? 'Confirmada · Pago' : booking.paidAmount > 0 ? 'Confirmada · Parcial' : 'Confirmada · A pagar')
+          : 'Avise-me se liberar')
+        : 'Disponível';
+      const playerWaitlistClass = booking && !admin ? 'waitlist-slot' : '';
+      return `<button class="slot ${booking ? (booking.status === 'pending' ? 'waiting' : 'booked') : ''} ${playerWaitlistClass}" data-court="${court.index}" data-hour="${hour}"><strong>${label}</strong><small>${detail}</small></button>`;
     }).join('')}</div>`).join('');
   $('#dateCaption').textContent = labelDate(day);
   $('#bottom').hidden = !admin;
@@ -975,6 +981,86 @@ function render() {
     $('#subtitle').textContent = 'Acompanhe receitas e pagamentos por dia, semana ou mês.';
   }
 }
+
+function openWaitlistDialog(courtIndex, hour) {
+  if (!arena || isAdmin) return;
+
+  const court = courts[courtIndex];
+  if (!court) return;
+
+  waitlistSelection = {
+    arenaSlug: arena.slug,
+    courtIndex,
+    courtId: court.id,
+    courtName: court.name,
+    sport: court.sport,
+    date: day,
+    hour,
+    duration: 1
+  };
+
+  $('#waitlistForm').reset();
+  $('#waitlistError').textContent = '';
+  $('#waitlistInfo').textContent = `${arena.name} · ${court.name} · ${labelDate(day)} · ${hour}:00–${hour + 1}:00`;
+  $('#waitlistDialog').showModal();
+}
+
+$('#closeWaitlist').onclick = () => {
+  waitlistSelection = null;
+  $('#waitlistDialog').close();
+};
+
+$('#waitlistForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!waitlistSelection) return;
+
+  const name = $('#waitlistName').value.trim();
+  const phone = $('#waitlistPhone').value.trim();
+  const submitButton = $('#submitWaitlist');
+
+  $('#waitlistError').textContent = '';
+  submitButton.disabled = true;
+  submitButton.textContent = 'Entrando na lista...';
+
+  try {
+    if (name.length < 2) throw new Error('Informe seu nome.');
+    if (phone.replace(/\D/g, '').length < 10) throw new Error('Informe um WhatsApp válido com DDD.');
+
+    const { data, error } = await supabase.functions.invoke('join-waitlist', {
+      body: {
+        arena_slug: waitlistSelection.arenaSlug,
+        court_id: waitlistSelection.courtId,
+        booking_date: waitlistSelection.date,
+        start_hour: waitlistSelection.hour,
+        duration: waitlistSelection.duration,
+        customer_name: name,
+        customer_phone: phone
+      }
+    });
+
+    if (error || data?.error) {
+      let message = data?.error || error?.message || 'Não foi possível entrar na lista de espera.';
+      try {
+        const body = await error?.context?.json();
+        if (body?.error) message = body.error;
+      } catch {}
+      throw new Error(message);
+    }
+
+    const info = waitlistSelection;
+    $('#waitlistDialog').close();
+    waitlistSelection = null;
+    toast(data?.already_waiting
+      ? 'Você já está na lista de espera deste horário.'
+      : `Tudo certo. Avisaremos no WhatsApp se ${info.hour}:00 liberar.`);
+  } catch (error) {
+    console.error(error);
+    $('#waitlistError').textContent = error.message || 'Não foi possível entrar na lista de espera.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Avisar se liberar';
+  }
+});
 
 function updateHours(preferred) {
   const court = Number($('#bookingCourt').value);
@@ -1461,6 +1547,12 @@ $('#schedule').addEventListener('click', (event) => {
     return;
   }
   const booking = getBooking(court, hour);
+
+  if (booking && !isAdmin) {
+    openWaitlistDialog(court, hour);
+    return;
+  }
+
   booking ? openDetail(booking.id) : openBooking(court, hour);
 });
 $('#requests').addEventListener('click', (event) => {
