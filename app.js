@@ -24,6 +24,9 @@ const today = localDate(new Date());
 let day = today;
 let view = 'player';
 let isAdmin = false;
+let isPlatformAdmin = false;
+let masterArenas = [];
+let masterLoading = false;
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
@@ -301,6 +304,83 @@ async function loadArena(targetSlug = activeArenaSlug, changeVersion = arenaChan
   return true;
 }
 
+async function checkPlatformAdmin() {
+  const { data, error } = await supabase.rpc('is_platform_admin');
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function loadMasterDashboard() {
+  if (!isPlatformAdmin) return false;
+
+  masterLoading = true;
+  try {
+    const { data, error } = await supabase.rpc('get_master_arenas');
+    if (error) throw error;
+    masterArenas = data || [];
+    return true;
+  } finally {
+    masterLoading = false;
+  }
+}
+
+function renderMasterPanel() {
+  const summary = $('#masterSummary');
+  const list = $('#masterArenaList');
+  if (!summary || !list) return;
+
+  const totalArenas = masterArenas.length;
+  const activeArenas = masterArenas.filter((item) => item.active).length;
+  const totalCourts = masterArenas.reduce((sum, item) => sum + Number(item.court_count || 0), 0);
+  const totalBookings = masterArenas.reduce((sum, item) => sum + Number(item.bookings_count || 0), 0);
+  const totalReceived = masterArenas.reduce((sum, item) => sum + Number(item.received || 0), 0);
+
+  summary.innerHTML = [
+    ['Arenas', totalArenas, `${activeArenas} ativas`, '◆'],
+    ['Quadras', totalCourts, 'Em toda a plataforma', '▦'],
+    ['Reservas', totalBookings, 'Ativas e pendentes', '◷'],
+    ['Recebido', money(totalReceived), 'Somatório das arenas', '↗']
+  ].map((item, index) => `
+    <div class="master-stat ${index === 3 ? 'featured' : ''}">
+      <div class="master-stat-label">${item[0]}<span>${item[3]}</span></div>
+      <strong>${item[1]}</strong>
+      <small>${item[2]}</small>
+    </div>
+  `).join('');
+
+  if (masterLoading) {
+    list.innerHTML = '<div class="master-empty">Atualizando arenas...</div>';
+    return;
+  }
+
+  if (!masterArenas.length) {
+    list.innerHTML = '<div class="master-empty">Nenhuma arena cadastrada.</div>';
+    return;
+  }
+
+  list.innerHTML = masterArenas.map((item) => `
+    <article class="master-arena-row">
+      <div class="master-arena-avatar">${esc(arenaInitials(item.name))}</div>
+      <div class="master-arena-main">
+        <div class="master-arena-title">
+          <strong>${esc(item.name)}</strong>
+          <span class="master-status ${item.active ? 'active' : 'inactive'}">${item.active ? 'Ativa' : 'Inativa'}</span>
+        </div>
+        <small>${esc(item.city || 'Porto Velho, RO')}</small>
+        <span>${Number(item.court_count || 0)} quadra${Number(item.court_count || 0) === 1 ? '' : 's'} · ${Number(item.bookings_count || 0)} reserva${Number(item.bookings_count || 0) === 1 ? '' : 's'}</span>
+      </div>
+      <div class="master-arena-admin">
+        <small>Administrador</small>
+        <strong>${esc(item.admin_email || 'Não cadastrado')}</strong>
+      </div>
+      <div class="master-arena-finance">
+        <small>Recebido</small>
+        <strong>${money(Number(item.received || 0))}</strong>
+      </div>
+    </article>
+  `).join('');
+}
+
 async function getAdminArenaForUser(userId) {
   if (!userId) return null;
 
@@ -329,8 +409,20 @@ async function getAdminArenaForUser(userId) {
 }
 
 async function enterAdminPanelForUser(userId) {
+  isPlatformAdmin = await checkPlatformAdmin();
   const linkedArena = await getAdminArenaForUser(userId);
-  if (!linkedArena) return false;
+
+  if (!linkedArena) {
+    if (!isPlatformAdmin) return false;
+
+    activeArenaSlug = '';
+    clearArenaIdentity();
+    isAdmin = true;
+    view = 'master';
+    await loadMasterDashboard();
+    render();
+    return true;
+  }
 
   activeArenaSlug = linkedArena.slug;
   const changeVersion = ++arenaChangeVersion;
@@ -551,13 +643,17 @@ function toast(message) {
 
 function syncAccessControls() {
   const adminNav = document.querySelector('[data-view="admin"]');
+  const financeNav = document.querySelector('[data-view="finance"]');
+  const masterNav = document.querySelector('[data-view="master"]');
   const playerNav = document.querySelector('[data-view="player"]');
-  adminNav.classList.toggle('hidden', !isAdmin);
-  document.querySelector('[data-view="finance"]').classList.toggle('hidden', !isAdmin);
+
+  adminNav.classList.toggle('hidden', !isAdmin || !arena);
+  financeNav.classList.toggle('hidden', !isAdmin || !arena);
+  masterNav.classList.toggle('hidden', !isPlatformAdmin);
   playerNav.classList.toggle('hidden', isAdmin);
   $('#adminLogin').classList.toggle('hidden', isAdmin);
   $('#adminLogout').classList.toggle('hidden', !isAdmin);
-  $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin');
+  $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin' || view === 'master');
 
   document.body.classList.toggle('admin-session', isAdmin);
 
@@ -665,10 +761,26 @@ function renderProfitPanel(list) {
   };
 }
 
-function setView(nextView) {
-  if (!['admin', 'finance', 'player'].includes(nextView)) return;
+async function setView(nextView) {
+  if (!['admin', 'finance', 'master', 'player'].includes(nextView)) return;
+
+  if (nextView === 'master') {
+    if (!isPlatformAdmin) return;
+    view = 'master';
+    try {
+      await loadMasterDashboard();
+      render();
+    } catch (error) {
+      console.error(error);
+      toast('Não foi possível atualizar o Painel Mestre.');
+    }
+    return;
+  }
+
   if (nextView !== 'player' && !isAdmin) return;
   if (nextView === 'player' && isAdmin) return;
+  if ((nextView === 'admin' || nextView === 'finance') && !arena) return;
+
   view = nextView;
   render();
 }
@@ -711,6 +823,36 @@ function render() {
   $('#date').value = day;
   if ($('#weekdayLabel')) $('#weekdayLabel').textContent = weekdayLabel(day);
 
+  const masterMode = view === 'master' && isPlatformAdmin;
+  const masterPanel = $('#masterPanel');
+  if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
+
+  if (masterMode) {
+    document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'master'));
+    $('#crumb').textContent = 'Painel Mestre';
+    $('#eyebrow').textContent = 'GESTÃO DA PLATAFORMA';
+    $('#title').textContent = 'Todas as arenas, em um só lugar.';
+    $('#subtitle').textContent = 'Cadastre novas arenas e acompanhe a operação geral do Quadra Aberta.';
+    $('#newBooking').classList.add('hidden');
+    $('#blockSchedule').classList.add('hidden');
+    $('#stats').classList.add('hidden');
+    document.querySelector('.workspace').classList.add('hidden');
+    $('#blockPanel').classList.add('hidden');
+    $('#bottom').hidden = true;
+    $('#bottom').style.display = 'none';
+
+    const profitPanel = $('#profitPanel');
+    if (profitPanel) {
+      profitPanel.style.display = 'none';
+      profitPanel.innerHTML = '';
+    }
+
+    renderMasterPanel();
+    return;
+  }
+
+  if (masterPanel) masterPanel.classList.add('hidden');
+
   if (!arena) {
     view = 'player';
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'player'));
@@ -746,6 +888,7 @@ function render() {
     return;
   }
 
+  $('#stats').classList.remove('hidden');
   $('#courtFilter').disabled = false;
   $('#date').disabled = false;
   $('#prevDay').disabled = false;
@@ -1240,6 +1383,8 @@ $('#blockList').addEventListener('click', async (event) => {
 $('#seePlayer').onclick = async () => {
   await supabase.auth.signOut();
   isAdmin = false;
+  isPlatformAdmin = false;
+  masterArenas = [];
   view = 'player';
   await syncBookingsRealtime();
   await refreshBookings(false);
@@ -1350,6 +1495,8 @@ $('#loginForm').addEventListener('submit', async (event) => {
 $('#adminLogout').onclick = async () => {
   await supabase.auth.signOut();
   isAdmin = false;
+  isPlatformAdmin = false;
+  masterArenas = [];
   view = 'player';
   await syncBookingsRealtime();
   await refreshBookings(false);
@@ -1474,6 +1621,98 @@ async function switchArena(nextSlug) {
     toast('Não foi possível trocar de arena. Tente novamente.');
   }
 }
+
+$('#openNewArena').onclick = () => {
+  if (!isPlatformAdmin) return;
+  $('#newArenaForm').reset();
+  $('#newArenaCity').value = 'Porto Velho, RO';
+  $('#newArenaCourtCount').value = '3';
+  $('#newArenaSport').value = 'Vôlei';
+  $('#newArenaPrice').value = '100';
+  $('#newArenaOpening').value = '14';
+  $('#newArenaClosing').value = '23';
+  $('#newArenaError').textContent = '';
+  $('#newArenaDialog').showModal();
+};
+
+$('#closeNewArena').onclick = () => $('#newArenaDialog').close();
+
+$('#refreshMaster').onclick = async () => {
+  if (!isPlatformAdmin) return;
+  try {
+    await loadMasterDashboard();
+    render();
+    toast('Painel Mestre atualizado.');
+  } catch (error) {
+    console.error(error);
+    toast('Não foi possível atualizar o Painel Mestre.');
+  }
+};
+
+$('#newArenaForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isPlatformAdmin) return;
+
+  const submitButton = $('#submitNewArena');
+  const courtCount = Number($('#newArenaCourtCount').value);
+  const sport = $('#newArenaSport').value.trim();
+  const hourlyPrice = Number($('#newArenaPrice').value);
+  const openingHour = Number($('#newArenaOpening').value);
+  const closingHour = Number($('#newArenaClosing').value);
+
+  $('#newArenaError').textContent = '';
+  submitButton.disabled = true;
+  submitButton.textContent = 'Criando arena...';
+
+  try {
+    if (!Number.isInteger(courtCount) || courtCount < 1 || courtCount > 20) {
+      throw new Error('Informe uma quantidade de quadras entre 1 e 20.');
+    }
+
+    const courtsPayload = Array.from({ length: courtCount }, (_, index) => ({
+      name: `Quadra ${String(index + 1).padStart(2, '0')}`,
+      sport,
+      hourlyPrice,
+      openingHour,
+      closingHour
+    }));
+
+    const { data, error } = await supabase.functions.invoke('create-arena', {
+      body: {
+        name: $('#newArenaName').value.trim(),
+        city: $('#newArenaCity').value.trim(),
+        address: $('#newArenaAddress').value.trim(),
+        whatsapp: $('#newArenaWhatsapp').value.trim(),
+        adminEmail: $('#newArenaAdminEmail').value.trim().toLowerCase(),
+        adminPassword: $('#newArenaAdminPassword').value,
+        courts: courtsPayload
+      }
+    });
+
+    if (error) {
+      let message = error.message || 'Não foi possível cadastrar a arena.';
+      try {
+        const body = await error.context?.json();
+        if (body?.error) message = body.error;
+      } catch {}
+      throw new Error(message);
+    }
+
+    if (data?.error) throw new Error(data.error);
+
+    $('#newArenaDialog').close();
+    await loadArenaCatalog();
+    await loadMasterDashboard();
+    render();
+    toast(`${data?.arena?.name || 'Arena'} cadastrada com sucesso.`);
+  } catch (error) {
+    console.error(error);
+    $('#newArenaError').textContent = error.message || 'Não foi possível cadastrar a arena.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Criar arena';
+  }
+});
 
 $('#arenaSelect').addEventListener('change', (event) => {
   switchArena(event.target.value);
