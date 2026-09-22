@@ -942,7 +942,9 @@ function render() {
 
   const masterMode = view === 'master' && isPlatformAdmin;
   const masterPanel = $('#masterPanel');
+  const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
+  if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
 
   if (masterMode) {
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'master'));
@@ -990,6 +992,7 @@ function render() {
     $('#bottom').hidden = true;
     $('#bottom').style.display = 'none';
     $('#blockPanel').classList.add('hidden');
+    if (partnerSpotlight) partnerSpotlight.classList.remove('hidden');
 
     const profitPanel = $('#profitPanel');
     if (profitPanel) {
@@ -1005,6 +1008,7 @@ function render() {
     return;
   }
 
+  if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
   $('#stats').classList.remove('hidden');
   $('#courtFilter').disabled = false;
   $('#date').disabled = false;
