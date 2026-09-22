@@ -360,6 +360,26 @@
 </div>
 </form>
 </dialog>
+<dialog id="cancelBookingDialog">
+<form id="cancelBookingForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">CANCELAMENTO DE RESERVA</p>
+<h2>Informe o motivo</h2>
+</div>
+<button type="button" id="closeCancelBookingDialog" class="close" aria-label="Fechar">×</button>
+</div>
+<p class="login-intro" id="cancelBookingInfo"></p>
+<div class="cancel-booking-summary" id="cancelBookingSummary"></div>
+<label>Motivo do cancelamento *<textarea id="cancelReason" required minlength="5" maxlength="500" rows="4" placeholder="Ex.: manutenção emergencial da quadra, indisponibilidade da arena..."></textarea></label>
+<p class="form-note">O motivo ficará registrado no histórico financeiro da arena. O cancelamento não realiza reembolso automático.</p>
+<p id="cancelBookingError" role="alert"></p>
+<div class="dialog-actions cancel-dialog-actions">
+<button class="secondary" id="backCancelBooking" type="button">Voltar</button>
+<button class="primary danger-primary" id="submitCancelBooking" type="submit">Confirmar cancelamento</button>
+</div>
+</form>
+</dialog>
 <dialog id="blockDialog">
 <form id="blockForm">
 <div class="dialog-heading">
