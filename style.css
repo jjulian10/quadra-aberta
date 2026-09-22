@@ -279,3 +279,14 @@ aside{background:linear-gradient(165deg,#0c3329 0%,#195641 70%,#27694b 100%);box
   }
   .arena-footer-contact{display:none!important}
 }
+
+.arena-picker-trigger:disabled{
+  cursor:default;
+  opacity:1;
+  filter:none;
+}
+.arena-picker-trigger:disabled:hover{
+  background:#ffffff08;
+  border-color:transparent;
+  transform:none;
+}
