@@ -38,6 +38,8 @@ let paymentPollTimer = null;
 let reservationPortalTimer = null;
 let reservationPortalData = null;
 let waitlistSelection = null;
+let cancellationHistory = [];
+let pendingCancellationBookingId = null;
 
 let bookings = [];
 let scheduleBlocks = [];
@@ -100,6 +102,29 @@ const mapScheduleBlock = (block, isPublic = false) => ({
   reason: isPublic ? '' : (block.reason || '')
 });
 
+const mapCancellation = (entry) => ({
+  id: entry.id,
+  bookingId: entry.booking_id,
+  bookingDate: entry.booking_date,
+  hour: Number(entry.start_hour),
+  duration: Number(entry.duration),
+  courtName: entry.court_name,
+  customerName: entry.customer_name,
+  bookingAmount: Number(entry.booking_amount || 0),
+  receivedAmount: Number(entry.payment_received_amount || 0),
+  paymentStatus: entry.payment_status,
+  reason: entry.cancellation_reason,
+  cancelledAt: entry.cancelled_at
+});
+
+const dateTimeLabel = (value) => new Date(value).toLocaleString('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit'
+});
+
 function arenaInitials(name = 'Arena') {
   const cleaned = name.replace(/^Arena\s+/i, '').trim();
   return (cleaned || name)
@@ -129,6 +154,8 @@ function clearArenaIdentity() {
   hours = [];
   bookings = [];
   scheduleBlocks = [];
+  cancellationHistory = [];
+  pendingCancellationBookingId = null;
   selectedId = null;
   filter = 'all';
   lastPlayerBooking = null;
@@ -469,6 +496,8 @@ async function enterAdminPanelForUser(userId) {
   view = 'player';
   bookings = [];
   scheduleBlocks = [];
+  cancellationHistory = [];
+  pendingCancellationBookingId = null;
 
   const loaded = await loadArena(linkedArena.slug, changeVersion);
   if (!loaded || changeVersion !== arenaChangeVersion) return false;
@@ -520,7 +549,7 @@ async function loadBookings() {
     const firstDate = new Date(reference);
     firstDate.setDate(firstDate.getDate() - 29);
 
-    const [bookingResult, blockResult] = await Promise.all([
+    const [bookingResult, blockResult, cancellationResult] = await Promise.all([
       supabase
         .from('bookings')
         .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
@@ -534,15 +563,23 @@ async function loadBookings() {
         .select('id, block_date, court_id, start_hour, duration, reason')
         .eq('arena_id', arenaSnapshot.id)
         .eq('block_date', daySnapshot)
-        .order('start_hour', { nullsFirst: true })
+        .order('start_hour', { nullsFirst: true }),
+      supabase
+        .from('booking_cancellations')
+        .select('id, booking_id, booking_date, start_hour, duration, court_name, customer_name, booking_amount, payment_received_amount, payment_status, cancellation_reason, cancelled_at')
+        .eq('arena_id', arenaSnapshot.id)
+        .order('cancelled_at', { ascending: false })
+        .limit(200)
     ]);
 
     if (bookingResult.error) throw bookingResult.error;
     if (blockResult.error) throw blockResult.error;
+    if (cancellationResult.error) throw cancellationResult.error;
     if (!stillCurrent()) return false;
 
     bookings = bookingResult.data.map((booking) => mapBooking(booking));
     scheduleBlocks = blockResult.data.map((block) => mapScheduleBlock(block));
+    cancellationHistory = cancellationResult.data.map((entry) => mapCancellation(entry));
     return true;
   }
 
@@ -727,6 +764,23 @@ function periodBookings(period) {
   });
 }
 
+function periodCancellationHistory(period) {
+  const reference = new Date(day + 'T12:00:00');
+  return cancellationHistory.filter((entry) => {
+    const cancelled = new Date(entry.cancelledAt);
+    const cancellationDate = new Date(
+      cancelled.getFullYear(),
+      cancelled.getMonth(),
+      cancelled.getDate(),
+      12
+    );
+    const difference = Math.round((reference - cancellationDate) / 86400000);
+    if (period === 'day') return difference === 0;
+    if (period === 'week') return difference >= 0 && difference < 7;
+    return difference >= 0 && difference < 30;
+  });
+}
+
 function renderProfitPanel(list) {
   const panel = $('#profitPanel');
   if (!panel) return;
@@ -740,6 +794,7 @@ function renderProfitPanel(list) {
   const received = list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0);
   const expected = list.reduce((sum, booking) => sum + bookingTotal(booking), 0);
   const periodLabel = { day: 'Data selecionada', week: 'Últimos 7 dias', month: 'Últimos 30 dias' }[profitPeriod];
+  const cancellations = periodCancellationHistory(profitPeriod);
 
   const byCourt = courts.map((court, index) => ({
     name: court.name,
@@ -750,6 +805,33 @@ function renderProfitPanel(list) {
 
   const maxCourt = Math.max(...byCourt.map((item) => item.value), 1);
   const receivedPercent = expected ? Math.min(100, Math.round(received / expected * 100)) : 0;
+
+  const cancellationRows = cancellations.length
+    ? cancellations.map((entry) => `
+      <div class="cancellation-history-row">
+        <div class="cancellation-history-date">
+          <strong>${esc(labelDate(entry.bookingDate))}</strong>
+          <small>${entry.hour}:00–${entry.hour + entry.duration}:00</small>
+        </div>
+        <div class="cancellation-history-court">
+          <strong>${esc(entry.courtName)}</strong>
+          <small>${esc(entry.customerName)}</small>
+        </div>
+        <div class="cancellation-history-value">
+          <strong>${money(entry.receivedAmount)}</strong>
+          <small>Recebido antes do cancelamento</small>
+        </div>
+        <div class="cancellation-history-reason">
+          <span>Motivo</span>
+          <strong>${esc(entry.reason)}</strong>
+        </div>
+        <div class="cancellation-history-when">
+          <span>Cancelada em</span>
+          <strong>${esc(dateTimeLabel(entry.cancelledAt))}</strong>
+        </div>
+      </div>`
+    ).join('')
+    : '<div class="cancellation-history-empty">Nenhum cancelamento registrado neste período.</div>';
 
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
@@ -771,7 +853,18 @@ function renderProfitPanel(list) {
       <div style="background:#f5f7f5;border-radius:9px;padding:14px"><small>Quitadas</small><strong style="display:block;font-size:22px;margin-top:7px">${fullyPaid.length}</strong></div>
       <div style="background:#fff4d8;border-radius:9px;padding:14px"><small>Pagamento parcial</small><strong style="display:block;font-size:22px;margin-top:7px">${partial.length}</strong></div>
       <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Sem pagamento</small><strong style="display:block;font-size:22px;margin-top:7px">${unpaid.length}</strong></div>
-    </div>`;
+    </div>
+    <section class="cancellation-history">
+      <div class="cancellation-history-heading">
+        <div>
+          <p class="eyebrow">AUDITORIA FINANCEIRA</p>
+          <h3>Histórico de cancelamentos</h3>
+          <p>O motivo e os valores recebidos ficam registrados. Reembolsos serão tratados separadamente.</p>
+        </div>
+        <span class="cancellation-history-count">${cancellations.length} ${cancellations.length === 1 ? 'cancelamento' : 'cancelamentos'}</span>
+      </div>
+      <div class="cancellation-history-list">${cancellationRows}</div>
+    </section>`;
 
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
     button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
@@ -1155,6 +1248,42 @@ function openDetail(id) {
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
 }
 
+function openCancellationDialog(booking) {
+  if (!booking || !isAdmin || view !== 'admin') return;
+
+  pendingCancellationBookingId = booking.id;
+  const court = courts[booking.court];
+  const totalAmount = bookingTotal(booking);
+  const receivedAmount = Number(booking.paidAmount || 0);
+
+  $('#cancelBookingInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${arena.name}`;
+  $('#cancelBookingSummary').innerHTML = `
+    <div><span>Responsável</span><strong>${esc(booking.name)}</strong></div>
+    <div><span>Quadra</span><strong>${esc(court?.name || 'Quadra')}</strong></div>
+    <div><span>Valor da reserva</span><strong>${money(totalAmount)}</strong></div>
+    <div><span>Já recebido</span><strong>${money(receivedAmount)}</strong></div>
+  `;
+  $('#cancelReason').value = '';
+  $('#cancelBookingError').textContent = '';
+  $('#submitCancelBooking').disabled = false;
+  $('#submitCancelBooking').textContent = 'Confirmar cancelamento';
+
+  if ($('#bookingDialog').open) $('#bookingDialog').close();
+  if (!$('#cancelBookingDialog').open) $('#cancelBookingDialog').showModal();
+  setTimeout(() => $('#cancelReason').focus(), 0);
+}
+
+function closeCancellationDialog(reopenBooking = false) {
+  const bookingId = pendingCancellationBookingId;
+  if ($('#cancelBookingDialog').open) $('#cancelBookingDialog').close();
+  pendingCancellationBookingId = null;
+
+  if (reopenBooking && bookingId) {
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (booking) openDetail(booking.id);
+  }
+}
+
 function dispararMensagem(booking) {
   const digits = (booking.phone || '').replace(/\D/g, '');
   if (digits.length < 10) return;
@@ -1418,9 +1547,8 @@ $('#bookingDialog').addEventListener('click', async (event) => {
   }
 
   if (action === 'cancel') {
-    if (!confirm('Cancelar esta reserva e liberar o horário?')) return;
-    changes = { status: 'cancelled' };
-    successMessage = 'Reserva cancelada. Horário disponível novamente.';
+    openCancellationDialog(booking);
+    return;
   }
 
   if (!changes) return;
@@ -1443,6 +1571,53 @@ $('#bookingDialog').addEventListener('click', async (event) => {
     toast('Não foi possível atualizar a reserva.');
   }
 });
+
+$('#cancelBookingForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isAdmin || view !== 'admin' || !pendingCancellationBookingId) return;
+
+  const booking = bookings.find((item) => item.id === pendingCancellationBookingId);
+  const reason = $('#cancelReason').value.trim();
+  const submitButton = $('#submitCancelBooking');
+  $('#cancelBookingError').textContent = '';
+
+  if (!booking) {
+    $('#cancelBookingError').textContent = 'A reserva não está mais disponível para cancelamento.';
+    return;
+  }
+
+  if (reason.length < 5) {
+    $('#cancelBookingError').textContent = 'Informe o motivo do cancelamento com pelo menos 5 caracteres.';
+    $('#cancelReason').focus();
+    return;
+  }
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Cancelando...';
+
+  try {
+    const { error } = await supabase.rpc('cancel_booking_with_reason', {
+      p_booking_id: booking.id,
+      p_reason: reason
+    });
+
+    if (error) throw error;
+
+    closeCancellationDialog(false);
+    selectedId = null;
+    await refreshBookings(false);
+    toast('Reserva cancelada. Motivo registrado no histórico financeiro.');
+  } catch (error) {
+    console.error(error);
+    $('#cancelBookingError').textContent = error.message || 'Não foi possível cancelar a reserva.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Confirmar cancelamento';
+  }
+});
+
+$('#closeCancelBookingDialog').onclick = () => closeCancellationDialog(true);
+$('#backCancelBooking').onclick = () => closeCancellationDialog(true);
 
 $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
