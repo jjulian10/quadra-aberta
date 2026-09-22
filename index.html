@@ -9,6 +9,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<section class="reservation-portal hidden" id="reservationPortal" aria-live="polite">
+  <div class="reservation-shell">
+    <div class="reservation-topbar">
+      <a class="reservation-brand" href="./" aria-label="Quadra Aberta">
+        <span class="brandmark">Q</span><strong>quadra<span>aberta</span></strong>
+      </a>
+      <button class="secondary" type="button" data-reservation-action="back">← Voltar para a agenda</button>
+    </div>
+    <div id="reservationPortalError" class="reservation-inline-error"></div>
+    <div id="reservationPortalContent">
+      <div class="reservation-loading"><span class="payment-dot"></span><strong>Carregando sua reserva…</strong></div>
+    </div>
+    <div id="reservationPortalToast" class="reservation-portal-toast"></div>
+  </div>
+</section>
 <aside>
 <a class="brand" href="#">
 <span class="brandmark">Q</span>quadra<span class="brand-light">aberta</span>
