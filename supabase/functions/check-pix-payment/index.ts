@@ -34,15 +34,20 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: lookupError } = await supabase
       .from("bookings")
-      .select("id, status, payment_status, deposit_amount, payment_provider_order_id, payment_expires_at")
+      .select("id, status, payment_status, amount, deposit_amount, payment_received_amount, payment_provider_order_id, payment_expires_at")
       .eq("id", booking_id)
       .eq("payment_access_token", payment_token)
       .eq("payment_provider", "mercado_pago")
       .single();
     if (lookupError || !booking) return json({ error: "Pagamento não encontrado." }, 404);
 
-    if (booking.payment_status === "paid") {
-      return json({ booking_status: "confirmed", payment_status: "paid" });
+    if (["partial", "paid"].includes(booking.payment_status)) {
+      return json({
+        booking_status: booking.status,
+        payment_status: booking.payment_status,
+        received_amount: Number(booking.payment_received_amount ?? 0),
+        total_amount: Number(booking.amount ?? 0),
+      });
     }
 
     if (booking.status === "cancelled" || new Date(booking.payment_expires_at).getTime() <= Date.now()) {
@@ -74,18 +79,27 @@ Deno.serve(async (req) => {
       throw new Error("O valor recebido é menor que o sinal da reserva.");
     }
 
+    const totalAmount = Number(booking.amount ?? 0);
+    const nextPaymentStatus = receivedAmount + Number.EPSILON >= totalAmount ? "paid" : "partial";
+
     const { error: updateError } = await supabase
       .from("bookings")
       .update({
         status: "confirmed",
-        payment_status: "paid",
+        payment_status: nextPaymentStatus,
+        payment_received_amount: receivedAmount,
         payment_confirmed_at: new Date().toISOString(),
       })
       .eq("id", booking.id)
       .eq("payment_status", "pending");
     if (updateError) throw updateError;
 
-    return json({ booking_status: "confirmed", payment_status: "paid" });
+    return json({
+      booking_status: "confirmed",
+      payment_status: nextPaymentStatus,
+      received_amount: receivedAmount,
+      total_amount: totalAmount,
+    });
   } catch (error) {
     console.error(error);
     return json({ error: "Não foi possível verificar o pagamento." }, 500);
