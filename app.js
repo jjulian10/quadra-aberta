@@ -11,6 +11,11 @@ const $ = (selector) => document.querySelector(selector);
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const authFlowType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
 let arena = null;
+let arenaCatalog = [];
+let activeArenaSlug = ARENA_SLUG;
+let arenaChangeVersion = 0;
+let bookingLoadVersion = 0;
+let realtimeVersion = 0;
 let courts = [];
 let hours = [];
 const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -71,25 +76,123 @@ const mapScheduleBlock = (block, isPublic = false) => ({
   reason: isPublic ? '' : (block.reason || '')
 });
 
-async function loadArena() {
+function arenaInitials(name = 'Arena') {
+  const cleaned = name.replace(/^Arena\s+/i, '').trim();
+  return (cleaned || name)
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function arenaWhatsappDigits() {
+  let digits = String(arena?.whatsapp || ARENA_SUPPORT_WHATSAPP || '').replace(/\D/g, '');
+  if (digits && digits.length <= 11) digits = '55' + digits;
+  return digits;
+}
+
+function formatWhatsapp(phone) {
+  const digits = String(phone || '').replace(/\D/g, '').replace(/^55/, '');
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return phone || '';
+}
+
+function renderArenaIdentity() {
+  if (!arena) return;
+
+  const arenaName = arena.name || 'Arena';
+  const city = arena.city || 'Porto Velho, RO';
+  const select = $('#arenaSelect');
+  if (select) select.value = arena.slug;
+
+  if ($('#arenaAvatar')) $('#arenaAvatar').textContent = arenaInitials(arenaName);
+  if ($('#arenaCity')) $('#arenaCity').textContent = city;
+  if ($('#arenaAddress')) {
+    $('#arenaAddress').textContent = arena.address || city;
+    $('#arenaAddress').hidden = !arena.address;
+  }
+
+  const phoneLink = $('#arenaPhone');
+  const whatsappDigits = arenaWhatsappDigits();
+  if (phoneLink) {
+    phoneLink.hidden = !whatsappDigits;
+    if (whatsappDigits) {
+      phoneLink.href = `https://wa.me/${whatsappDigits}`;
+      phoneLink.textContent = `${formatWhatsapp(arena.whatsapp || whatsappDigits)} · WhatsApp`;
+    }
+  }
+
+  if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = arenaName;
+  if ($('#loginIntro')) $('#loginIntro').textContent = `Acesse a agenda, as solicitações e o dashboard financeiro da ${arenaName}.`;
+  if ($('#bookingArenaEyebrow')) $('#bookingArenaEyebrow').textContent = arenaName.toUpperCase();
+}
+
+async function loadArenaCatalog() {
+  const { data, error } = await supabase
+    .from('arenas')
+    .select('slug, name, city, address, whatsapp')
+    .eq('active', true);
+
+  if (error) throw error;
+
+  const priority = ['arena-vila', 'arena-elsinho', 'arena-matrix'];
+  arenaCatalog = (data || []).sort((a, b) => {
+    const ai = priority.indexOf(a.slug);
+    const bi = priority.indexOf(b.slug);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+
+  const select = $('#arenaSelect');
+  if (select) {
+    select.innerHTML = arenaCatalog
+      .map((item) => `<option value="${esc(item.slug)}">${esc(item.name)}</option>`)
+      .join('');
+    select.value = activeArenaSlug;
+  }
+}
+
+function populateCourtSelects() {
+  filter = 'all';
+
+  $('#bookingCourt').innerHTML = courts
+    .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+    .join('');
+
+  $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>' + courts
+    .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+    .join('');
+
+  $('#blockCourt').innerHTML = '<option value="all">Todas as quadras</option>' + courts
+    .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
+    .join('');
+}
+
+async function loadArena(targetSlug = activeArenaSlug, changeVersion = arenaChangeVersion) {
   const { data: arenaData, error: arenaError } = await supabase
     .from('arenas')
-    .select('id, name, city, timezone')
-    .eq('slug', ARENA_SLUG)
+    .select('id, slug, name, city, timezone, address, whatsapp')
+    .eq('slug', targetSlug)
+    .eq('active', true)
     .single();
 
   if (arenaError) throw arenaError;
-  arena = arenaData;
+  if (changeVersion !== arenaChangeVersion || targetSlug !== activeArenaSlug) return false;
 
   const { data: courtData, error: courtError } = await supabase
     .from('courts')
     .select('id, name, sport, hourly_price, opening_hour, closing_hour, sort_order')
-    .eq('arena_id', arena.id)
+    .eq('arena_id', arenaData.id)
     .eq('active', true)
     .order('sort_order');
 
   if (courtError) throw courtError;
+  if (changeVersion !== arenaChangeVersion || targetSlug !== activeArenaSlug) return false;
+  if (!courtData?.length) throw new Error('Esta arena ainda não possui quadras ativas.');
 
+  arena = arenaData;
   courts = courtData.map((court) => ({
     id: court.id,
     name: court.name,
@@ -105,6 +208,9 @@ async function loadArena() {
     { length: closingHour - openingHour },
     (_, index) => openingHour + index
   );
+
+  renderArenaIdentity();
+  return true;
 }
 
 async function hasAdminAccess(userId) {
@@ -134,10 +240,21 @@ async function restoreAdminSession() {
 }
 
 async function loadBookings() {
-  if (!arena) return;
+  if (!arena) return false;
 
-  if (isAdmin) {
-    const reference = new Date(day + 'T12:00:00');
+  const requestVersion = ++bookingLoadVersion;
+  const arenaSnapshot = { id: arena.id, slug: arena.slug };
+  const daySnapshot = day;
+  const adminSnapshot = isAdmin;
+  const stillCurrent = () =>
+    requestVersion === bookingLoadVersion &&
+    arena?.id === arenaSnapshot.id &&
+    arena?.slug === arenaSnapshot.slug &&
+    day === daySnapshot &&
+    isAdmin === adminSnapshot;
+
+  if (adminSnapshot) {
+    const reference = new Date(daySnapshot + 'T12:00:00');
     const firstDate = new Date(reference);
     firstDate.setDate(firstDate.getDate() - 29);
 
@@ -145,40 +262,45 @@ async function loadBookings() {
       supabase
         .from('bookings')
         .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
-        .eq('arena_id', arena.id)
+        .eq('arena_id', arenaSnapshot.id)
         .gte('booking_date', localDate(firstDate))
-        .lte('booking_date', day)
+        .lte('booking_date', daySnapshot)
         .in('status', ['pending', 'confirmed'])
         .order('start_hour'),
       supabase
         .from('schedule_blocks')
         .select('id, block_date, court_id, start_hour, duration, reason')
-        .eq('arena_id', arena.id)
-        .eq('block_date', day)
+        .eq('arena_id', arenaSnapshot.id)
+        .eq('block_date', daySnapshot)
         .order('start_hour', { nullsFirst: true })
     ]);
 
     if (bookingResult.error) throw bookingResult.error;
     if (blockResult.error) throw blockResult.error;
+    if (!stillCurrent()) return false;
+
     bookings = bookingResult.data.map((booking) => mapBooking(booking));
     scheduleBlocks = blockResult.data.map((block) => mapScheduleBlock(block));
-    return;
+    return true;
   }
 
   const { data, error } = await supabase.rpc('get_public_schedule_v2', {
-    target_arena_slug: ARENA_SLUG,
-    target_date: day
+    target_arena_slug: arenaSnapshot.slug,
+    target_date: daySnapshot
   });
 
   if (error) throw error;
+  if (!stillCurrent()) return false;
+
   bookings = data.filter((entry) => entry.entry_type === 'booking').map((booking) => mapBooking(booking, true));
   scheduleBlocks = data.filter((entry) => entry.entry_type === 'block').map((block) => mapScheduleBlock(block, true));
+  return true;
 }
 
 async function refreshBookings(showError = true) {
   try {
-    await loadBookings();
-    render();
+    const updated = await loadBookings();
+    if (updated) render();
   } catch (error) {
     console.error(error);
     if (showError) toast('Não foi possível atualizar a agenda. Tente novamente.');
@@ -186,36 +308,46 @@ async function refreshBookings(showError = true) {
 }
 
 async function syncBookingsRealtime() {
+  const channelVersion = ++realtimeVersion;
+
   if (bookingsRealtimeChannel) {
-    await supabase.removeChannel(bookingsRealtimeChannel);
+    const previousChannel = bookingsRealtimeChannel;
     bookingsRealtimeChannel = null;
+    await supabase.removeChannel(previousChannel);
   }
 
-  if (!arena) return;
+  if (!arena || channelVersion !== realtimeVersion) return;
 
+  const arenaId = arena.id;
   const scheduleRefresh = () => {
+    if (channelVersion !== realtimeVersion || arena?.id !== arenaId) return;
     clearTimeout(realtimeRefreshTimer);
-    realtimeRefreshTimer = setTimeout(() => refreshBookings(false), 120);
+    realtimeRefreshTimer = setTimeout(() => {
+      if (channelVersion !== realtimeVersion || arena?.id !== arenaId) return;
+      refreshBookings(false);
+    }, 120);
   };
 
   if (!isAdmin) {
     bookingsRealtimeChannel = supabase
-      .channel(`public-schedule-${arena.id}`)
+      .channel(`public-schedule-${arenaId}-${channelVersion}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'schedule_change_events',
-          filter: `arena_id=eq.${arena.id}`
+          filter: `arena_id=eq.${arenaId}`
         },
         (payload) => {
+          if (channelVersion !== realtimeVersion || arena?.id !== arenaId) return;
           const changedDate = payload.new?.schedule_date || payload.old?.schedule_date;
           if (changedDate && changedDate !== day) return;
           scheduleRefresh();
         }
       )
       .subscribe((status) => {
+        if (channelVersion !== realtimeVersion || arena?.id !== arenaId) return;
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error(`Falha na atualização em tempo real: ${status}`);
         }
@@ -224,14 +356,14 @@ async function syncBookingsRealtime() {
   }
 
   bookingsRealtimeChannel = supabase
-    .channel(`admin-bookings-${arena.id}`)
+    .channel(`admin-bookings-${arenaId}-${channelVersion}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
         table: 'bookings',
-        filter: `arena_id=eq.${arena.id}`
+        filter: `arena_id=eq.${arenaId}`
       },
       scheduleRefresh
     )
@@ -241,11 +373,12 @@ async function syncBookingsRealtime() {
         event: '*',
         schema: 'public',
         table: 'schedule_blocks',
-        filter: `arena_id=eq.${arena.id}`
+        filter: `arena_id=eq.${arenaId}`
       },
       scheduleRefresh
     )
     .subscribe((status) => {
+      if (channelVersion !== realtimeVersion || arena?.id !== arenaId) return;
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error(`Falha na atualização em tempo real: ${status}`);
       }
@@ -418,7 +551,7 @@ function render() {
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   const admin = view === 'admin';
   $('#crumb').textContent = admin ? 'Agenda e reservas' : 'Visão do jogador';
-  $('#eyebrow').textContent = admin ? 'CONTROLE DA ARENA' : 'ARENA VILA · PORTO VELHO';
+  $('#eyebrow').textContent = admin ? 'CONTROLE DA ARENA' : `${arena?.name?.toUpperCase() || 'ARENA'} · ${(arena?.city || 'Porto Velho, RO').toUpperCase()}`;
   $('#title').textContent = admin ? 'Bom jogo começa com uma boa agenda.' : 'Seu próximo jogo começa aqui.';
   $('#subtitle').textContent = admin ? 'Todos os horários. Cada reserva. Tudo no seu lugar.' : 'Escolha a quadra, encontre seu horário e solicite uma reserva.';
   $('#newBooking').textContent = admin ? '＋ Nova reserva' : '＋ Solicitar reserva';
@@ -500,7 +633,7 @@ function openBooking(court = 0, hour, duration = 1) {
     : 'O horário será confirmado automaticamente após o pagamento do sinal via Pix.';
   $('#detailContent').innerHTML = '';
   $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
-  $('#dialogInfo').textContent = labelDate(day) + ' · Arena Vila';
+  $('#dialogInfo').textContent = `${labelDate(day)} · ${arena.name}`;
   $('#bookingCourt').value = String(court);
   $('#bookingDuration').value = String(duration);
   $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Gerar Pix de R$ 0,01'}</button>`;
@@ -526,7 +659,7 @@ function updateBlockForm() {
 function openBlockDialog(court = filter === 'all' ? 'all' : filter, hour) {
   $('#blockForm').reset();
   $('#blockError').textContent = '';
-  $('#blockDialogInfo').textContent = `${labelDate(day)} · Arena Vila`;
+  $('#blockDialogInfo').textContent = `${labelDate(day)} · ${arena.name}`;
   $('#blockCourt').value = String(court);
   $('#blockType').value = 'time';
   updateBlockForm();
@@ -571,7 +704,7 @@ function openDetail(id) {
 function dispararMensagem(booking) {
   const digits = (booking.phone || '').replace(/\D/g, '');
   if (digits.length < 10) return;
-  const text = `Olá, ${booking.name}! Sua reserva foi confirmada na Arena Vila.\n\nQuadra: ${courts[booking.court].name} - ${courts[booking.court].sport}\nData: ${labelDate(booking.date)}\nHorário: ${booking.hour}:00 às ${booking.hour + booking.duration}:00\nDuração: ${durationLabel(booking.duration)}\n\nAguardamos você. Em caso de alteração, entre em contato com a arena.`;
+  const text = `Olá, ${booking.name}! Sua reserva foi confirmada na ${arena.name}.\n\nQuadra: ${courts[booking.court].name} - ${courts[booking.court].sport}\nData: ${labelDate(booking.date)}\nHorário: ${booking.hour}:00 às ${booking.hour + booking.duration}:00\nDuração: ${durationLabel(booking.duration)}\n\nAguardamos você. Em caso de alteração, entre em contato com a arena.`;
   const whatsappUrl = 'https://wa.me/55' + digits + '?text=' + encodeURIComponent(text);
   window.open(whatsappUrl, '_blank', 'noopener');
 }
@@ -581,10 +714,13 @@ function openArenaSupport(booking = lastPlayerBooking) {
     ? `\n\nReserva: ${labelDate(booking.date)}, das ${booking.hour}:00 às ${booking.hour + booking.duration}:00, ${courts[booking.court]?.name || 'quadra selecionada'}.`
     : '';
   const message = `Olá! Preciso de suporte com uma reserva no Quadra Aberta.${bookingContext}`;
-  window.open(`https://wa.me/${ARENA_SUPPORT_WHATSAPP}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+  const whatsapp = arenaWhatsappDigits();
+  if (!whatsapp) return;
+  window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
 }
 
 function showConfirmation(booking) {
+  if (booking.arenaSlug && booking.arenaSlug !== arena?.slug) return;
   clearInterval(paymentPollTimer);
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
@@ -604,6 +740,7 @@ function showConfirmation(booking) {
 }
 
 async function checkPaymentStatus(booking) {
+  const bookingArenaSlug = booking.arenaSlug || arena?.slug;
   const { data, error } = await supabase.functions.invoke('check-pix-payment', {
     body: {
       booking_id: booking.id,
@@ -611,7 +748,7 @@ async function checkPaymentStatus(booking) {
     }
   });
 
-  if (error || !data) return;
+  if (error || !data || bookingArenaSlug !== arena?.slug) return;
 
   const state = data;
   if (['partial', 'paid'].includes(state.payment_status) && state.booking_status === 'confirmed') {
@@ -628,6 +765,7 @@ async function checkPaymentStatus(booking) {
 }
 
 function showPixPayment(booking) {
+  if (booking.arenaSlug && booking.arenaSlug !== arena?.slug) return;
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = 'Pague o sinal via Pix';
@@ -696,7 +834,7 @@ $('#bookingForm').addEventListener('submit', async (event) => {
       submitButton.textContent = 'Gerando Pix...';
       const { data, error } = await supabase.functions.invoke('create-pix-payment', {
         body: {
-          arena_slug: ARENA_SLUG,
+          arena_slug: arena.slug,
           court_id: courts[court].id,
           booking_date: day,
           start_hour: hour,
@@ -714,6 +852,7 @@ $('#bookingForm').addEventListener('submit', async (event) => {
       }
       savedBooking = {
         id: data.booking_id,
+        arenaSlug: arena.slug,
         date: day,
         court,
         hour,
@@ -1051,21 +1190,67 @@ $('#passwordForm').addEventListener('submit', async (event) => {
   }
 });
 
+async function switchArena(nextSlug) {
+  if (!nextSlug || nextSlug === activeArenaSlug) return;
+
+  const previousSlug = arena?.slug || activeArenaSlug;
+  activeArenaSlug = nextSlug;
+  const changeVersion = ++arenaChangeVersion;
+  bookingLoadVersion += 1;
+  realtimeVersion += 1;
+  clearTimeout(realtimeRefreshTimer);
+  clearInterval(paymentPollTimer);
+  lastPlayerBooking = null;
+  selectedId = null;
+
+  if (bookingsRealtimeChannel) {
+    const previousChannel = bookingsRealtimeChannel;
+    bookingsRealtimeChannel = null;
+    await supabase.removeChannel(previousChannel);
+  }
+
+  if (changeVersion !== arenaChangeVersion) return;
+
+  try {
+    if (isAdmin) await supabase.auth.signOut();
+    if (changeVersion !== arenaChangeVersion) return;
+
+    isAdmin = false;
+    view = 'player';
+    bookings = [];
+    scheduleBlocks = [];
+
+    const loaded = await loadArena(nextSlug, changeVersion);
+    if (!loaded || changeVersion !== arenaChangeVersion) return;
+
+    populateCourtSelects();
+    const bookingsLoaded = await loadBookings();
+    if (!bookingsLoaded || changeVersion !== arenaChangeVersion) return;
+
+    await syncBookingsRealtime();
+    if (changeVersion !== arenaChangeVersion) return;
+
+    render();
+    toast(`Agenda da ${arena.name} carregada.`);
+  } catch (error) {
+    console.error(error);
+    if (changeVersion !== arenaChangeVersion) return;
+    activeArenaSlug = previousSlug;
+    const select = $('#arenaSelect');
+    if (select) select.value = previousSlug;
+    toast('Não foi possível trocar de arena. Tente novamente.');
+  }
+}
+
+$('#arenaSelect').addEventListener('change', (event) => {
+  switchArena(event.target.value);
+});
+
 async function initialize() {
   try {
+    await loadArenaCatalog();
     await loadArena();
-
-    $('#bookingCourt').innerHTML = courts
-      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
-      .join('');
-
-    $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>' + courts
-      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
-      .join('');
-
-    $('#blockCourt').innerHTML = '<option value="all">Todas as quadras</option>' + courts
-      .map((court, index) => `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`)
-      .join('');
+    populateCourtSelects();
 
     await restoreAdminSession();
     view = isAdmin ? 'admin' : 'player';
