@@ -47,3 +47,43 @@ aside{background:linear-gradient(165deg,#0c3329 0%,#195641 70%,#27694b 100%);box
   .arena.arena-switcher{display:flex;flex:1 1 245px;margin:0;padding:10px 11px}
   .arena-switcher #arenaAddress{display:none}
 }
+
+
+/* Contato da arena no canto inferior da lateral */
+.arena-footer-contact{
+  position:absolute;
+  left:24px;
+  right:24px;
+  bottom:22px;
+  padding-top:12px;
+  border-top:1px solid #ffffff24;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.arena-footer-contact[hidden]{display:none!important}
+.arena-footer-contact small{
+  color:#d5e5dd;
+  font-size:11px;
+  line-height:1.45;
+}
+.arena-footer-contact .arena-phone{
+  margin-top:0;
+  color:#dff4cf;
+  font-size:11px;
+  font-weight:600;
+  line-height:1.35;
+}
+.arena-empty-state{
+  min-height:180px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  padding:32px 18px;
+}
+@media(max-height:650px) and (min-width:801px){
+  .aside-bottom{display:none}
+}
+@media(max-width:800px){
+  .arena-footer-contact{display:none!important}
+}
