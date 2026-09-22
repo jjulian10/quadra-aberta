@@ -16,8 +16,15 @@
 <div class="arena arena-switcher">
 <span class="avatar" id="arenaAvatar">•</span>
 <div class="arena-meta">
-<label class="arena-select-label" for="arenaSelect">Arena</label>
-<select id="arenaSelect" class="arena-select" aria-label="Selecionar arena">
+<span class="arena-select-label">Arena</span>
+<div class="arena-picker" id="arenaPicker">
+<button class="arena-picker-trigger" id="arenaSelectTrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+<span class="arena-select-value" id="arenaSelectValue">Selecione uma arena</span>
+<span class="arena-picker-chevron" aria-hidden="true"></span>
+</button>
+<div class="arena-picker-menu" id="arenaSelectMenu" role="listbox" aria-label="Selecionar arena"></div>
+</div>
+<select id="arenaSelect" class="arena-native-select" aria-hidden="true" tabindex="-1">
 <option value="" selected>Selecione uma arena</option>
 <option value="arena-vila">Arena Vila</option>
 <option value="arena-elsinho">Arena Elsinho</option>
@@ -32,14 +39,15 @@
 <button data-view="finance" class="nav hidden">📊 &nbsp; Financeiro</button>
 <button data-view="player" class="nav">◷ &nbsp; Visão do jogador</button>
 </nav>
+<div class="arena-footer-contact" id="arenaFooterContact" hidden>
+<span class="arena-contact-label">LOCALIZAÇÃO E CONTATO</span>
+<small id="arenaAddress">Rua João Pessoa 5611, Nova Esperança | Porto Velho</small>
+<a id="arenaPhone" class="arena-phone" href="https://wa.me/5569992667022" target="_blank" rel="noopener noreferrer">(69) 99266-7022 · WhatsApp</a>
+</div>
 <div class="aside-bottom">
 <span class="demo-pill">SISTEMA ONLINE</span>
 <p>Conheça o próximo<br>capítulo da sua arena.</p>
 <small>Agenda sincronizada e reservas armazenadas com segurança.</small>
-</div>
-<div class="arena-footer-contact" id="arenaFooterContact" hidden>
-<small id="arenaAddress">Rua João Pessoa 5611, Nova Esperança | Porto Velho</small>
-<a id="arenaPhone" class="arena-phone" href="https://wa.me/5569992667022" target="_blank" rel="noopener noreferrer">(69) 99266-7022 · WhatsApp</a>
 </div>
 </aside>
 <div class="app">
