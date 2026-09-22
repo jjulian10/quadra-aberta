@@ -296,3 +296,27 @@ aside{background:linear-gradient(165deg,#0c3329 0%,#195641 70%,#27694b 100%);box
 body.admin-session .arena-footer-contact{
   display:none!important;
 }
+
+
+/* Dia da semana da data selecionada */
+.weekday-label{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:104px;
+  padding:9px 12px;
+  border-left:1px solid var(--line);
+  background:#f8faf8;
+  color:var(--ink);
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap;
+  text-transform:capitalize;
+}
+@media(max-width:490px){
+  .weekday-label{
+    min-width:96px;
+    padding:9px 8px;
+    font-size:12px;
+  }
+}
