@@ -30,7 +30,13 @@ Deno.serve(async (req) => {
     if (!paid) return response({ received: true, paid: false });
 
     const bookingId = order?.external_reference;
-    if (!bookingId) throw new Error("Cobrança sem referência de reserva.");
+    if (!bookingId) return response({ received: true, ignored: true });
+
+    // Cobranças complementares do portal "Minha Reserva" usam um prefixo
+    // próprio e são confirmadas pela função específica do saldo restante.
+    if (String(bookingId).startsWith("balance:")) {
+      return response({ received: true, ignored: true, kind: "balance" });
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -40,7 +46,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: lookupError } = await supabase
       .from("bookings")
-      .select("id, deposit_amount, payment_status")
+      .select("id, amount, deposit_amount, payment_status, payment_received_amount")
       .eq("id", bookingId)
       .eq("payment_provider", "mercado_pago")
       .eq("payment_provider_order_id", String(orderId))
@@ -52,12 +58,16 @@ Deno.serve(async (req) => {
       throw new Error("Valor recebido menor que o sinal da reserva.");
     }
 
-    if (booking.payment_status !== "paid") {
+    const totalAmount = Number(booking.amount ?? 0);
+    const nextPaymentStatus = receivedAmount + Number.EPSILON >= totalAmount ? "paid" : "partial";
+
+    if (!["partial", "paid"].includes(booking.payment_status)) {
       const { error: updateError } = await supabase
         .from("bookings")
         .update({
           status: "confirmed",
-          payment_status: "paid",
+          payment_status: nextPaymentStatus,
+          payment_received_amount: receivedAmount,
           payment_confirmed_at: new Date().toISOString(),
         })
         .eq("id", booking.id)
@@ -65,7 +75,12 @@ Deno.serve(async (req) => {
       if (updateError) throw updateError;
     }
 
-    return response({ received: true, paid: true });
+    return response({
+      received: true,
+      paid: nextPaymentStatus === "paid",
+      payment_status: nextPaymentStatus,
+      received_amount: receivedAmount,
+    });
   } catch (error) {
     console.error(error);
     return response({ error: "Falha ao processar a notificação." }, 500);
