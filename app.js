@@ -159,7 +159,10 @@ function renderArenaIdentity() {
   }
 
   const footer = $('#arenaFooterContact');
-  if (footer) footer.hidden = false;
+  if (footer) {
+    footer.hidden = isAdmin;
+    footer.classList.toggle('hidden', isAdmin);
+  }
 
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = arenaName;
   if ($('#loginIntro')) $('#loginIntro').textContent = `Acesse a agenda, as solicitações e o dashboard financeiro da ${arenaName}.`;
@@ -552,9 +555,12 @@ function syncAccessControls() {
   $('#adminLogout').classList.toggle('hidden', !isAdmin);
   $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin');
 
+  document.body.classList.toggle('admin-session', isAdmin);
+
   const arenaContact = $('#arenaFooterContact');
   if (arenaContact) {
     arenaContact.hidden = isAdmin || !arena;
+    arenaContact.classList.toggle('hidden', isAdmin || !arena);
   }
 
   const arenaTrigger = $('#arenaSelectTrigger');
