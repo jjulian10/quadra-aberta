@@ -304,8 +304,15 @@ async function loadArena(targetSlug = activeArenaSlug, changeVersion = arenaChan
   return true;
 }
 
-async function checkPlatformAdmin() {
-  const { data, error } = await supabase.rpc('is_platform_admin');
+async function checkPlatformAdmin(userId) {
+  if (!userId) return false;
+
+  const { data, error } = await supabase
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
   if (error) throw error;
   return Boolean(data);
 }
@@ -409,7 +416,7 @@ async function getAdminArenaForUser(userId) {
 }
 
 async function enterAdminPanelForUser(userId) {
-  isPlatformAdmin = await checkPlatformAdmin();
+  isPlatformAdmin = await checkPlatformAdmin(userId);
   const linkedArena = await getAdminArenaForUser(userId);
 
   if (!linkedArena) {
