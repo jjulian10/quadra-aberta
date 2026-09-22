@@ -113,6 +113,8 @@ function clearArenaIdentity() {
 
   const select = $('#arenaSelect');
   if (select) select.value = '';
+  if ($('#arenaSelectValue')) $('#arenaSelectValue').textContent = 'Selecione uma arena';
+  renderArenaPickerOptions();
 
   if ($('#arenaAvatar')) $('#arenaAvatar').textContent = '•';
   if ($('#arenaCity')) $('#arenaCity').textContent = 'Selecione uma arena';
@@ -134,6 +136,8 @@ function renderArenaIdentity() {
   const city = arena.city || 'Porto Velho, RO';
   const select = $('#arenaSelect');
   if (select) select.value = arena.slug;
+  if ($('#arenaSelectValue')) $('#arenaSelectValue').textContent = arenaName;
+  renderArenaPickerOptions();
 
   if ($('#arenaAvatar')) $('#arenaAvatar').textContent = arenaInitials(arenaName);
   if ($('#arenaCity')) $('#arenaCity').textContent = city;
@@ -162,6 +166,48 @@ function renderArenaIdentity() {
   if ($('#bookingArenaEyebrow')) $('#bookingArenaEyebrow').textContent = arenaName.toUpperCase();
 }
 
+function renderArenaPickerOptions() {
+  const menu = $('#arenaSelectMenu');
+  if (!menu) return;
+
+  menu.innerHTML = arenaCatalog.map((item) => {
+    const selected = item.slug === activeArenaSlug;
+    return `
+      <button
+        class="arena-picker-option${selected ? ' selected' : ''}"
+        type="button"
+        role="option"
+        aria-selected="${selected}"
+        data-arena-slug="${esc(item.slug)}"
+      >
+        <span class="arena-option-avatar">${esc(arenaInitials(item.name))}</span>
+        <span class="arena-option-copy">
+          <strong>${esc(item.name)}</strong>
+          <small>${esc(item.city || 'Porto Velho, RO')}</small>
+        </span>
+        <span class="arena-option-check" aria-hidden="true">${selected ? '✓' : ''}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function closeArenaPicker() {
+  const picker = $('#arenaPicker');
+  const trigger = $('#arenaSelectTrigger');
+  if (!picker || !trigger) return;
+  picker.classList.remove('open');
+  trigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleArenaPicker() {
+  const picker = $('#arenaPicker');
+  const trigger = $('#arenaSelectTrigger');
+  if (!picker || !trigger) return;
+  const opening = !picker.classList.contains('open');
+  picker.classList.toggle('open', opening);
+  trigger.setAttribute('aria-expanded', String(opening));
+}
+
 async function loadArenaCatalog() {
   const { data, error } = await supabase
     .from('arenas')
@@ -185,6 +231,8 @@ async function loadArenaCatalog() {
       .join('');
     select.value = activeArenaSlug || '';
   }
+
+  renderArenaPickerOptions();
 }
 
 function populateCourtSelects() {
@@ -1370,6 +1418,33 @@ async function switchArena(nextSlug) {
 
 $('#arenaSelect').addEventListener('change', (event) => {
   switchArena(event.target.value);
+});
+
+$('#arenaSelectTrigger').addEventListener('click', (event) => {
+  event.stopPropagation();
+  toggleArenaPicker();
+});
+
+$('#arenaSelectMenu').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-arena-slug]');
+  if (!option) return;
+
+  const slug = option.dataset.arenaSlug;
+  const select = $('#arenaSelect');
+  if (select) {
+    select.value = slug;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  closeArenaPicker();
+});
+
+document.addEventListener('click', (event) => {
+  const picker = $('#arenaPicker');
+  if (picker && !picker.contains(event.target)) closeArenaPicker();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeArenaPicker();
 });
 
 async function initialize() {
