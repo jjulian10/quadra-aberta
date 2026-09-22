@@ -14,17 +14,16 @@
 <span class="brandmark">Q</span>quadra<span class="brand-light">aberta</span>
 </a>
 <div class="arena arena-switcher">
-<span class="avatar" id="arenaAvatar">AV</span>
+<span class="avatar" id="arenaAvatar">•</span>
 <div class="arena-meta">
 <label class="arena-select-label" for="arenaSelect">Arena</label>
 <select id="arenaSelect" class="arena-select" aria-label="Selecionar arena">
+<option value="" selected>Selecione uma arena</option>
 <option value="arena-vila">Arena Vila</option>
 <option value="arena-elsinho">Arena Elsinho</option>
 <option value="arena-matrix">Arena Matrix</option>
 </select>
-<small id="arenaCity">Porto Velho, RO</small>
-<small id="arenaAddress">Rua João Pessoa 5611, Nova Esperança | Porto Velho</small>
-<a id="arenaPhone" class="arena-phone" href="https://wa.me/5569992667022" target="_blank" rel="noopener noreferrer">(69) 99266-7022 · WhatsApp</a>
+<small id="arenaCity">Selecione uma arena</small>
 </div>
 </div>
 <div class="nav-label">SEU ESPAÇO, EM DIA</div>
@@ -38,10 +37,14 @@
 <p>Conheça o próximo<br>capítulo da sua arena.</p>
 <small>Agenda sincronizada e reservas armazenadas com segurança.</small>
 </div>
+<div class="arena-footer-contact" id="arenaFooterContact" hidden>
+<small id="arenaAddress">Rua João Pessoa 5611, Nova Esperança | Porto Velho</small>
+<a id="arenaPhone" class="arena-phone" href="https://wa.me/5569992667022" target="_blank" rel="noopener noreferrer">(69) 99266-7022 · WhatsApp</a>
+</div>
 </aside>
 <div class="app">
 <header>
-<span class="breadcrumb"><span id="breadcrumbArena">Arena Vila</span> <span>/</span> <b id="crumb">Visão do jogador</b>
+<span class="breadcrumb"><span id="breadcrumbArena">Selecione uma arena</span> <span>/</span> <b id="crumb">Visão do jogador</b>
 </span>
 <div class="header-right">
 <span class="demo-label">Sistema conectado</span>
@@ -59,7 +62,7 @@
 </div>
 <div class="page-actions">
 <button class="secondary hidden" id="blockSchedule" type="button">⊘ Bloquear agenda</button>
-<button class="primary" id="newBooking">＋ Nova reserva</button>
+<button class="primary hidden" id="newBooking">＋ Nova reserva</button>
 </div>
 </div>
 <section class="stats" id="stats">
