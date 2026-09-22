@@ -92,15 +92,23 @@ Deno.serve(async (req) => {
 
     if (!order?.id || !qrCode) throw new Error("O provedor não retornou os dados do Pix.");
 
-    const { error: updateError } = await supabase
+    const { data: bookingAccess, error: updateError } = await supabase
       .from("bookings")
-      .update({ payment_provider_order_id: String(order.id) })
-      .eq("id", bookingId);
+      .update({
+        payment_provider_order_id: String(order.id),
+        payment_qr_code: String(qrCode),
+        payment_qr_code_base64: qrCodeBase64 ? String(qrCodeBase64) : null,
+        payment_ticket_url: ticketUrl ? String(ticketUrl) : null,
+      })
+      .eq("id", bookingId)
+      .select("reservation_access_token")
+      .single();
     if (updateError) throw updateError;
 
     return json({
       booking_id: bookingId,
       payment_token: data.payment_token,
+      reservation_token: bookingAccess.reservation_access_token,
       deposit_amount: Number(data.deposit_amount),
       expires_in_minutes: 30,
       qr_code: qrCode,
