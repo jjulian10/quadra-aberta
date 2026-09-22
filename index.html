@@ -37,6 +37,7 @@
 <nav>
 <button data-view="admin" class="nav hidden">▦ &nbsp; Agenda e reservas</button>
 <button data-view="finance" class="nav hidden">📊 &nbsp; Financeiro</button>
+<button data-view="master" id="masterNav" class="nav hidden">◆ &nbsp; Painel Mestre</button>
 <button data-view="player" class="nav">◷ &nbsp; Visão do jogador</button>
 </nav>
 <div class="arena-footer-contact" id="arenaFooterContact" hidden>
@@ -74,6 +75,30 @@
 </div>
 </div>
 <section class="stats" id="stats">
+</section>
+<section class="master-panel hidden" id="masterPanel">
+  <div class="master-head">
+    <div>
+      <p class="eyebrow">VISÃO CONSOLIDADA</p>
+      <h2>Gestão das arenas</h2>
+      <p>Cadastre novas unidades e acompanhe os principais números da plataforma.</p>
+    </div>
+    <div class="master-actions">
+      <button class="secondary" id="refreshMaster" type="button">↻ Atualizar</button>
+      <button class="primary" id="openNewArena" type="button">＋ Nova arena</button>
+    </div>
+  </div>
+  <div class="master-summary" id="masterSummary"></div>
+  <div class="master-list-card">
+    <div class="master-list-heading">
+      <div>
+        <span class="eyebrow">ARENAS CADASTRADAS</span>
+        <h2>Operação da plataforma</h2>
+      </div>
+      <span class="master-list-note">Dados consolidados</span>
+    </div>
+    <div id="masterArenaList"></div>
+  </div>
 </section>
 <section class="workspace">
 <div class="workspace-top">
@@ -145,6 +170,74 @@
 </footer>
 </main>
 </div>
+<dialog id="newArenaDialog" class="master-dialog">
+<form id="newArenaForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">PAINEL MESTRE</p>
+<h2>Cadastrar nova arena</h2>
+</div>
+<button type="button" id="closeNewArena" class="close" aria-label="Fechar">×</button>
+</div>
+<p class="login-intro">Crie a arena, as quadras iniciais e o acesso administrativo em um único cadastro.</p>
+
+<div class="master-form-grid">
+<label>Nome da arena
+<input id="newArenaName" type="text" required minlength="2" maxlength="80" placeholder="Ex.: Arena Central">
+</label>
+<label>Cidade
+<input id="newArenaCity" type="text" required maxlength="80" value="Porto Velho, RO">
+</label>
+</div>
+
+<label>Endereço
+<input id="newArenaAddress" type="text" required minlength="5" maxlength="180" placeholder="Rua, número e bairro">
+</label>
+
+<label>WhatsApp da arena
+<input id="newArenaWhatsapp" type="tel" required inputmode="tel" maxlength="20" placeholder="(69) 99999-9999">
+</label>
+
+<div class="master-form-section">
+<span>ADMINISTRADOR DA ARENA</span>
+<div class="master-form-grid">
+<label>E-mail
+<input id="newArenaAdminEmail" type="email" required autocomplete="off" placeholder="admin@arena.com">
+</label>
+<label>Senha temporária
+<input id="newArenaAdminPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo de 8 caracteres">
+</label>
+</div>
+</div>
+
+<div class="master-form-section">
+<span>CONFIGURAÇÃO INICIAL DAS QUADRAS</span>
+<div class="master-form-grid three">
+<label>Quantidade
+<input id="newArenaCourtCount" type="number" required min="1" max="20" value="3">
+</label>
+<label>Modalidade
+<input id="newArenaSport" type="text" required maxlength="60" value="Vôlei">
+</label>
+<label>Preço / hora
+<input id="newArenaPrice" type="number" required min="0" step="0.01" value="100">
+</label>
+</div>
+<div class="master-form-grid">
+<label>Abre às
+<input id="newArenaOpening" type="number" required min="0" max="23" value="14">
+</label>
+<label>Fecha às
+<input id="newArenaClosing" type="number" required min="1" max="24" value="23">
+</label>
+</div>
+<p class="form-note">As quadras serão criadas como Quadra 01, Quadra 02 e assim por diante. Depois podemos permitir configurações individuais por quadra.</p>
+</div>
+
+<p id="newArenaError" role="alert"></p>
+<div class="dialog-actions"><button class="primary" id="submitNewArena" type="submit">Criar arena</button></div>
+</form>
+</dialog>
 <dialog id="loginDialog">
 <form id="loginForm">
 <div class="dialog-heading">
