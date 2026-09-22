@@ -938,3 +938,57 @@ body.reservation-mode>.app{
     flex-direction:column;
   }
 }
+
+
+/* Lista de espera inteligente */
+.slot.waitlist-slot{
+  cursor:pointer;
+  opacity:1;
+  position:relative;
+  transition:transform .16s ease,box-shadow .16s ease,background .16s ease;
+}
+.slot.waitlist-slot:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 16px rgba(49,87,66,.11);
+}
+.slot.waitlist-slot small{
+  font-weight:600;
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+.waitlist-dialog{
+  width:min(510px,calc(100% - 28px));
+}
+.waitlist-highlight{
+  margin:4px 0 17px;
+  padding:15px 16px;
+  border:1px solid #dce8d6;
+  background:#f5f9f2;
+  border-radius:11px;
+}
+.waitlist-highlight span{
+  display:block;
+  color:#638071;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.11em;
+}
+.waitlist-highlight strong{
+  display:block;
+  margin-top:6px;
+  font-size:13px;
+  line-height:1.45;
+}
+.waitlist-highlight small{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+}
+#waitlistError{
+  min-height:20px;
+  margin:2px 0 8px;
+  color:#a52b29;
+  font-size:13px;
+}
