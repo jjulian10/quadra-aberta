@@ -12,7 +12,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const authFlowType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
 let arena = null;
 let arenaCatalog = [];
-let activeArenaSlug = ARENA_SLUG;
+let activeArenaSlug = '';
 let arenaChangeVersion = 0;
 let bookingLoadVersion = 0;
 let realtimeVersion = 0;
@@ -99,8 +99,36 @@ function formatWhatsapp(phone) {
   return phone || '';
 }
 
+function clearArenaIdentity() {
+  arena = null;
+  courts = [];
+  hours = [];
+  bookings = [];
+  scheduleBlocks = [];
+  selectedId = null;
+  filter = 'all';
+  lastPlayerBooking = null;
+  clearInterval(paymentPollTimer);
+  paymentPollTimer = null;
+
+  const select = $('#arenaSelect');
+  if (select) select.value = '';
+
+  if ($('#arenaAvatar')) $('#arenaAvatar').textContent = '•';
+  if ($('#arenaCity')) $('#arenaCity').textContent = 'Selecione uma arena';
+  if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = 'Selecione uma arena';
+  if ($('#loginIntro')) $('#loginIntro').textContent = 'Selecione uma arena para acessar a administração.';
+  if ($('#bookingArenaEyebrow')) $('#bookingArenaEyebrow').textContent = 'ARENA';
+
+  const footer = $('#arenaFooterContact');
+  if (footer) footer.hidden = true;
+}
+
 function renderArenaIdentity() {
-  if (!arena) return;
+  if (!arena) {
+    clearArenaIdentity();
+    return;
+  }
 
   const arenaName = arena.name || 'Arena';
   const city = arena.city || 'Porto Velho, RO';
@@ -109,9 +137,11 @@ function renderArenaIdentity() {
 
   if ($('#arenaAvatar')) $('#arenaAvatar').textContent = arenaInitials(arenaName);
   if ($('#arenaCity')) $('#arenaCity').textContent = city;
-  if ($('#arenaAddress')) {
-    $('#arenaAddress').textContent = arena.address || city;
-    $('#arenaAddress').hidden = !arena.address;
+
+  const address = $('#arenaAddress');
+  if (address) {
+    address.textContent = arena.address || city;
+    address.hidden = false;
   }
 
   const phoneLink = $('#arenaPhone');
@@ -123,6 +153,9 @@ function renderArenaIdentity() {
       phoneLink.textContent = `${formatWhatsapp(arena.whatsapp || whatsappDigits)} · WhatsApp`;
     }
   }
+
+  const footer = $('#arenaFooterContact');
+  if (footer) footer.hidden = false;
 
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = arenaName;
   if ($('#loginIntro')) $('#loginIntro').textContent = `Acesse a agenda, as solicitações e o dashboard financeiro da ${arenaName}.`;
@@ -147,10 +180,10 @@ async function loadArenaCatalog() {
 
   const select = $('#arenaSelect');
   if (select) {
-    select.innerHTML = arenaCatalog
+    select.innerHTML = '<option value="">Selecione uma arena</option>' + arenaCatalog
       .map((item) => `<option value="${esc(item.slug)}">${esc(item.name)}</option>`)
       .join('');
-    select.value = activeArenaSlug;
+    select.value = activeArenaSlug || '';
   }
 }
 
@@ -548,6 +581,48 @@ function render() {
   ensureEnhancements();
   syncAccessControls();
   $('#date').value = day;
+
+  if (!arena) {
+    view = 'player';
+    document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'player'));
+    $('#crumb').textContent = 'Visão do jogador';
+    $('#eyebrow').textContent = 'AGENDA DE QUADRAS';
+    $('#title').textContent = 'Selecione uma arena para começar.';
+    $('#subtitle').textContent = 'A agenda será carregada somente depois que você escolher uma arena no menu lateral.';
+    $('#workspaceTitle').textContent = 'Agenda de quadras';
+    $('#workspaceSubtitle').textContent = 'Escolha uma arena para visualizar os horários disponíveis.';
+    $('#stats').innerHTML = '';
+    $('#stats').classList.remove('hidden');
+    document.querySelector('.workspace').classList.remove('hidden');
+    $('#schedule').style.removeProperty('--cols');
+    $('#schedule').innerHTML = '<div class="empty arena-empty-state">Nenhuma arena carregada. Selecione uma arena para visualizar a agenda.</div>';
+    $('#dateCaption').textContent = '';
+    $('#newBooking').classList.add('hidden');
+    $('#blockSchedule').classList.add('hidden');
+    $('#bottom').hidden = true;
+    $('#bottom').style.display = 'none';
+    $('#blockPanel').classList.add('hidden');
+
+    const profitPanel = $('#profitPanel');
+    if (profitPanel) {
+      profitPanel.style.display = 'none';
+      profitPanel.innerHTML = '';
+    }
+
+    $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>';
+    $('#courtFilter').disabled = true;
+    $('#date').disabled = true;
+    $('#prevDay').disabled = true;
+    $('#nextDay').disabled = true;
+    $('#today').disabled = true;
+    return;
+  }
+
+  $('#courtFilter').disabled = false;
+  $('#date').disabled = false;
+  $('#prevDay').disabled = false;
+  $('#nextDay').disabled = false;
+  $('#today').disabled = false;
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   const admin = view === 'admin';
   $('#crumb').textContent = admin ? 'Agenda e reservas' : 'Visão do jogador';
@@ -966,7 +1041,13 @@ $('#bookingDialog').addEventListener('click', async (event) => {
 $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#closeDialog').onclick = () => { clearInterval(paymentPollTimer); $('#bookingDialog').close(); };
-$('#newBooking').onclick = () => openBooking(filter === 'all' ? 0 : Number(filter));
+$('#newBooking').onclick = () => {
+  if (!arena) {
+    toast('Selecione uma arena antes de solicitar uma reserva.');
+    return;
+  }
+  openBooking(filter === 'all' ? 0 : Number(filter));
+};
 $('#blockSchedule').onclick = () => openBlockDialog();
 $('#closeBlockDialog').onclick = () => $('#blockDialog').close();
 $('#blockType').onchange = updateBlockForm;
@@ -1085,6 +1166,11 @@ $('#today').onclick = async () => {
 };
 
 $('#adminLogin').onclick = () => {
+  if (!arena) {
+    toast('Selecione uma arena antes de entrar como administrador.');
+    return;
+  }
+
   $('#loginError').textContent = '';
   $('#loginForm').reset();
   $('#loginDialog').showModal();
@@ -1191,9 +1277,38 @@ $('#passwordForm').addEventListener('submit', async (event) => {
 });
 
 async function switchArena(nextSlug) {
-  if (!nextSlug || nextSlug === activeArenaSlug) return;
+  const previousSlug = arena?.slug || activeArenaSlug || '';
 
-  const previousSlug = arena?.slug || activeArenaSlug;
+  if (!nextSlug) {
+    activeArenaSlug = '';
+    const changeVersion = ++arenaChangeVersion;
+    bookingLoadVersion += 1;
+    realtimeVersion += 1;
+    clearTimeout(realtimeRefreshTimer);
+    clearInterval(paymentPollTimer);
+    lastPlayerBooking = null;
+    selectedId = null;
+
+    if (bookingsRealtimeChannel) {
+      const previousChannel = bookingsRealtimeChannel;
+      bookingsRealtimeChannel = null;
+      await supabase.removeChannel(previousChannel);
+    }
+
+    if (changeVersion !== arenaChangeVersion) return;
+
+    if (isAdmin) await supabase.auth.signOut();
+    if (changeVersion !== arenaChangeVersion) return;
+
+    isAdmin = false;
+    view = 'player';
+    clearArenaIdentity();
+    render();
+    return;
+  }
+
+  if (nextSlug === activeArenaSlug && arena?.slug === nextSlug) return;
+
   activeArenaSlug = nextSlug;
   const changeVersion = ++arenaChangeVersion;
   bookingLoadVersion += 1;
@@ -1235,13 +1350,17 @@ async function switchArena(nextSlug) {
   } catch (error) {
     console.error(error);
     if (changeVersion !== arenaChangeVersion) return;
+
     activeArenaSlug = previousSlug;
     const select = $('#arenaSelect');
     if (select) select.value = previousSlug;
 
-    if (arena?.slug === previousSlug) {
+    if (previousSlug && arena?.slug === previousSlug) {
       populateCourtSelects();
       await syncBookingsRealtime();
+      render();
+    } else {
+      clearArenaIdentity();
       render();
     }
 
@@ -1256,26 +1375,15 @@ $('#arenaSelect').addEventListener('change', (event) => {
 async function initialize() {
   try {
     await loadArenaCatalog();
-    await loadArena();
-    populateCourtSelects();
-
-    await restoreAdminSession();
-    view = isAdmin ? 'admin' : 'player';
-    await loadBookings();
-    await syncBookingsRealtime();
+    activeArenaSlug = '';
+    clearArenaIdentity();
     render();
-
-    if (isAdmin && ['invite', 'recovery'].includes(authFlowType)) {
-      $('#passwordForm').reset();
-      $('#passwordError').textContent = '';
-      $('#passwordDialog').showModal();
-    }
   } catch (error) {
     console.error(error);
     $('#title').textContent = 'Agenda temporariamente indisponível.';
     $('#subtitle').textContent = 'Não foi possível conectar ao serviço de reservas. Tente novamente em alguns instantes.';
     $('#newBooking').classList.add('hidden');
-    toast('Falha ao carregar a agenda.');
+    toast('Falha ao carregar o catálogo de arenas.');
   }
 }
 
