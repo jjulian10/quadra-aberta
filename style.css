@@ -320,3 +320,216 @@ body.admin-session .arena-footer-contact{
     font-size:12px;
   }
 }
+
+
+/* Painel Mestre */
+.master-panel{
+  display:grid;
+  gap:20px;
+}
+.master-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  background:linear-gradient(135deg,#ffffff 0%,#f3f8f1 100%);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:24px 26px;
+  box-shadow:0 10px 28px #173c300d;
+}
+.master-head h2{
+  font-size:24px;
+  margin-bottom:7px;
+}
+.master-head p:last-child{
+  margin:0;
+  font-size:13px;
+}
+.master-actions{
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+}
+.master-summary{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+}
+.master-stat{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:18px 19px;
+  box-shadow:0 8px 22px #173c300d;
+}
+.master-stat.featured{
+  background:linear-gradient(135deg,#eaf3df,#d9edc7);
+  border-color:#cce2ba;
+}
+.master-stat-label{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--muted);
+  font-size:12px;
+}
+.master-stat strong{
+  display:block;
+  margin:10px 0 4px;
+  font:800 27px Manrope,sans-serif;
+  letter-spacing:-.7px;
+}
+.master-stat small{
+  color:var(--muted);
+  font-size:11px;
+}
+.master-list-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 12px 32px #173c300d;
+}
+.master-list-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:21px 24px 17px;
+  border-bottom:1px solid var(--line);
+}
+.master-list-heading .eyebrow{
+  margin-bottom:5px;
+}
+.master-list-heading h2{
+  margin:0;
+}
+.master-list-note{
+  color:var(--muted);
+  font-size:11px;
+  background:#f2f5f1;
+  border-radius:20px;
+  padding:6px 10px;
+}
+.master-arena-row{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) minmax(150px,.75fr) minmax(110px,.45fr);
+  align-items:center;
+  gap:14px;
+  padding:17px 24px;
+  border-top:1px solid #edf1ed;
+}
+.master-arena-row:first-child{
+  border-top:0;
+}
+.master-arena-avatar{
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  background:#edf4e8;
+  color:var(--green);
+  font-size:12px;
+  font-weight:800;
+}
+.master-arena-main,
+.master-arena-admin,
+.master-arena-finance{
+  min-width:0;
+}
+.master-arena-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.master-arena-title strong{
+  font-size:14px;
+}
+.master-arena-main small,
+.master-arena-main>span,
+.master-arena-admin small,
+.master-arena-finance small{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin-top:4px;
+}
+.master-arena-admin strong,
+.master-arena-finance strong{
+  display:block;
+  margin-top:4px;
+  font-size:12px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.master-status{
+  border-radius:20px;
+  padding:3px 7px;
+  font-size:9px;
+  font-weight:700;
+}
+.master-status.active{
+  background:#e6f2db;
+  color:#476c36;
+}
+.master-status.inactive{
+  background:#f3e8e5;
+  color:#8a5144;
+}
+.master-empty{
+  padding:30px 24px;
+  color:var(--muted);
+  font-size:13px;
+  text-align:center;
+}
+.master-dialog{
+  width:min(650px,calc(100% - 30px));
+}
+.master-form-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.master-form-grid.three{
+  grid-template-columns:.7fr 1.15fr 1fr;
+}
+.master-form-section{
+  border-top:1px solid var(--line);
+  padding-top:17px;
+  margin-top:5px;
+}
+.master-form-section>span{
+  display:block;
+  margin-bottom:13px;
+  color:#638071;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.1em;
+}
+#newArenaError{
+  min-height:20px;
+  margin:2px 0 8px;
+  color:#a52b29;
+  font-size:13px;
+}
+@media(max-width:1000px){
+  .master-summary{grid-template-columns:repeat(2,1fr)}
+  .master-arena-row{grid-template-columns:42px minmax(0,1fr) minmax(130px,.7fr)}
+  .master-arena-finance{grid-column:2 / -1}
+}
+@media(max-width:650px){
+  .master-head{flex-direction:column;padding:20px}
+  .master-actions{width:100%}
+  .master-actions button{flex:1}
+  .master-summary{grid-template-columns:1fr 1fr}
+  .master-arena-row{grid-template-columns:38px minmax(0,1fr);padding:15px 17px}
+  .master-arena-admin,.master-arena-finance{grid-column:2}
+  .master-form-grid,.master-form-grid.three{grid-template-columns:1fr}
+}
+@media(max-width:420px){
+  .master-summary{grid-template-columns:1fr}
+}
