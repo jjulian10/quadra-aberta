@@ -38,6 +38,10 @@ let scheduleBlocks = [];
 const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const labelDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+const weekdayLabel = (date) => {
+  const label = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 const getBooking = (court, hour, date = day) => bookings.find((booking) => booking.date === date && booking.court === court && hour >= booking.hour && hour < booking.hour + booking.duration);
 const getScheduleBlock = (court, hour, date = day) => scheduleBlocks.find((block) =>
   block.date === date &&
@@ -705,6 +709,7 @@ function render() {
   ensureEnhancements();
   syncAccessControls();
   $('#date').value = day;
+  if ($('#weekdayLabel')) $('#weekdayLabel').textContent = weekdayLabel(day);
 
   if (!arena) {
     view = 'player';
@@ -738,7 +743,6 @@ function render() {
     $('#date').disabled = true;
     $('#prevDay').disabled = true;
     $('#nextDay').disabled = true;
-    $('#today').disabled = true;
     return;
   }
 
@@ -746,7 +750,6 @@ function render() {
   $('#date').disabled = false;
   $('#prevDay').disabled = false;
   $('#nextDay').disabled = false;
-  $('#today').disabled = false;
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   const admin = view === 'admin';
   $('#crumb').textContent = admin ? 'Agenda e reservas' : 'Visão do jogador';
@@ -1284,11 +1287,6 @@ async function moveDay(amount) {
 }
 $('#prevDay').onclick = () => moveDay(-1);
 $('#nextDay').onclick = () => moveDay(1);
-$('#today').onclick = async () => {
-  day = today;
-  await refreshBookings();
-};
-
 $('#adminLogin').onclick = () => {
   $('#loginError').textContent = '';
   $('#loginForm').reset();
