@@ -185,6 +185,33 @@
 </footer>
 </main>
 </div>
+<dialog id="waitlistDialog" class="waitlist-dialog">
+<form id="waitlistForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">LISTA DE ESPERA</p>
+<h2>Avise-me se liberar</h2>
+</div>
+<button type="button" id="closeWaitlist" class="close" aria-label="Fechar">×</button>
+</div>
+<p class="login-intro" id="waitlistInfo"></p>
+<div class="waitlist-highlight">
+<span>COMO FUNCIONA</span>
+<strong>Se esse horário ficar disponível, você recebe um aviso pelo WhatsApp.</strong>
+<small>O aviso não reserva automaticamente a quadra. O horário fica com quem concluir a nova reserva primeiro.</small>
+</div>
+<label>Seu nome
+<input id="waitlistName" type="text" required minlength="2" maxlength="70" autocomplete="name" placeholder="Nome do responsável">
+</label>
+<label>WhatsApp
+<input id="waitlistPhone" type="tel" required maxlength="20" inputmode="tel" autocomplete="tel" placeholder="(69) 99999-9999">
+</label>
+<p id="waitlistError" role="alert"></p>
+<div class="dialog-actions">
+<button class="primary" id="submitWaitlist" type="submit">Avisar se liberar</button>
+</div>
+</form>
+</dialog>
 <dialog id="newArenaDialog" class="master-dialog">
 <form id="newArenaForm">
 <div class="dialog-heading">
