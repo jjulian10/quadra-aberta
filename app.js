@@ -552,6 +552,11 @@ function syncAccessControls() {
   $('#adminLogout').classList.toggle('hidden', !isAdmin);
   $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin');
 
+  const arenaContact = $('#arenaFooterContact');
+  if (arenaContact) {
+    arenaContact.hidden = isAdmin || !arena;
+  }
+
   const arenaTrigger = $('#arenaSelectTrigger');
   if (arenaTrigger) {
     arenaTrigger.disabled = isAdmin;
