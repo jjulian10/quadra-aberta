@@ -119,7 +119,7 @@ function clearArenaIdentity() {
   if ($('#arenaAvatar')) $('#arenaAvatar').textContent = '•';
   if ($('#arenaCity')) $('#arenaCity').textContent = 'Selecione uma arena';
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = 'Selecione uma arena';
-  if ($('#loginIntro')) $('#loginIntro').textContent = 'Selecione uma arena para acessar a administração.';
+  if ($('#loginIntro')) $('#loginIntro').textContent = 'Entre com seu e-mail e senha. Sua arena será identificada automaticamente.';
   if ($('#bookingArenaEyebrow')) $('#bookingArenaEyebrow').textContent = 'ARENA';
 
   const footer = $('#arenaFooterContact');
@@ -294,30 +294,88 @@ async function loadArena(targetSlug = activeArenaSlug, changeVersion = arenaChan
   return true;
 }
 
-async function hasAdminAccess(userId) {
-  if (!arena || !userId) return false;
+async function getAdminArenaForUser(userId) {
+  if (!userId) return null;
 
-  const { data, error } = await supabase
+  const { data: memberships, error: membershipError } = await supabase
     .from('arena_admins')
-    .select('role')
-    .eq('arena_id', arena.id)
-    .eq('user_id', userId)
-    .maybeSingle();
+    .select('arena_id, role')
+    .eq('user_id', userId);
 
-  if (error) throw error;
-  return Boolean(data);
+  if (membershipError) throw membershipError;
+  if (!memberships?.length) return null;
+
+  if (memberships.length > 1) {
+    throw new Error('Este usuário está vinculado a mais de uma arena. Revise o cadastro administrativo.');
+  }
+
+  const membership = memberships[0];
+  const { data: linkedArena, error: arenaError } = await supabase
+    .from('arenas')
+    .select('id, slug, name')
+    .eq('id', membership.arena_id)
+    .eq('active', true)
+    .single();
+
+  if (arenaError) throw arenaError;
+  return { ...linkedArena, role: membership.role };
+}
+
+async function enterAdminPanelForUser(userId) {
+  const linkedArena = await getAdminArenaForUser(userId);
+  if (!linkedArena) return false;
+
+  activeArenaSlug = linkedArena.slug;
+  const changeVersion = ++arenaChangeVersion;
+  bookingLoadVersion += 1;
+  realtimeVersion += 1;
+  clearTimeout(realtimeRefreshTimer);
+  clearInterval(paymentPollTimer);
+  lastPlayerBooking = null;
+  selectedId = null;
+
+  if (bookingsRealtimeChannel) {
+    const previousChannel = bookingsRealtimeChannel;
+    bookingsRealtimeChannel = null;
+    await supabase.removeChannel(previousChannel);
+  }
+
+  if (changeVersion !== arenaChangeVersion) return false;
+
+  isAdmin = false;
+  view = 'player';
+  bookings = [];
+  scheduleBlocks = [];
+
+  const loaded = await loadArena(linkedArena.slug, changeVersion);
+  if (!loaded || changeVersion !== arenaChangeVersion) return false;
+
+  populateCourtSelects();
+
+  isAdmin = true;
+  view = 'admin';
+
+  const bookingsLoaded = await loadBookings();
+  if (!bookingsLoaded || changeVersion !== arenaChangeVersion) return false;
+
+  await syncBookingsRealtime();
+  if (changeVersion !== arenaChangeVersion) return false;
+
+  render();
+  return true;
 }
 
 async function restoreAdminSession() {
   const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return false;
 
-  if (error || !data.user) return;
-
-  isAdmin = await hasAdminAccess(data.user.id);
-
-  if (!isAdmin) {
+  const restored = await enterAdminPanelForUser(data.user.id);
+  if (!restored) {
     await supabase.auth.signOut();
+    return false;
   }
+
+  return true;
 }
 
 async function loadBookings() {
@@ -493,6 +551,13 @@ function syncAccessControls() {
   $('#adminLogin').classList.toggle('hidden', isAdmin);
   $('#adminLogout').classList.toggle('hidden', !isAdmin);
   $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin');
+
+  const arenaTrigger = $('#arenaSelectTrigger');
+  if (arenaTrigger) {
+    arenaTrigger.disabled = isAdmin;
+    arenaTrigger.setAttribute('aria-disabled', String(isAdmin));
+    if (isAdmin) closeArenaPicker();
+  }
 }
 
 function ensureEnhancements() {
@@ -1214,11 +1279,6 @@ $('#today').onclick = async () => {
 };
 
 $('#adminLogin').onclick = () => {
-  if (!arena) {
-    toast('Selecione uma arena antes de entrar como administrador.');
-    return;
-  }
-
   $('#loginError').textContent = '';
   $('#loginForm').reset();
   $('#loginDialog').showModal();
@@ -1263,20 +1323,15 @@ $('#loginForm').addEventListener('submit', async (event) => {
 
     if (error) throw error;
 
-    const allowed = await hasAdminAccess(data.user.id);
+    const entered = await enterAdminPanelForUser(data.user.id);
 
-    if (!allowed) {
+    if (!entered) {
       await supabase.auth.signOut();
-      throw new Error('Este usuário não possui acesso à administração da arena.');
+      throw new Error('Este usuário não possui uma arena administrativa vinculada.');
     }
 
-    isAdmin = true;
-    view = 'admin';
-    await loadBookings();
-    await syncBookingsRealtime();
     $('#loginDialog').close();
-    render();
-    toast('Acesso administrativo iniciado.');
+    toast(`Acesso administrativo da ${arena.name} iniciado.`);
   } catch (error) {
     console.error(error);
     $('#loginError').textContent = error.message || 'E-mail ou senha inválidos.';
@@ -1307,17 +1362,12 @@ $('#passwordForm').addEventListener('submit', async (event) => {
     const { data, error } = await supabase.auth.updateUser({ password });
     if (error) throw error;
 
-    const allowed = await hasAdminAccess(data.user.id);
-    if (!allowed) throw new Error('Este usuário não possui acesso à administração da arena.');
+    const entered = await enterAdminPanelForUser(data.user.id);
+    if (!entered) throw new Error('Este usuário não possui uma arena administrativa vinculada.');
 
-    isAdmin = true;
-    view = 'admin';
-    await loadBookings();
-    await syncBookingsRealtime();
     $('#passwordDialog').close();
     history.replaceState(null, '', window.location.pathname + window.location.search);
-    render();
-    toast('Senha criada. Acesso administrativo iniciado.');
+    toast(`Senha criada. Acesso administrativo da ${arena.name} iniciado.`);
   } catch (error) {
     console.error(error);
     $('#passwordError').textContent = error.message || 'Não foi possível salvar a senha.';
@@ -1450,9 +1500,19 @@ document.addEventListener('keydown', (event) => {
 async function initialize() {
   try {
     await loadArenaCatalog();
-    activeArenaSlug = '';
-    clearArenaIdentity();
-    render();
+
+    const restored = await restoreAdminSession();
+    if (!restored) {
+      activeArenaSlug = '';
+      clearArenaIdentity();
+      render();
+    }
+
+    if (restored && ['invite', 'recovery'].includes(authFlowType)) {
+      $('#passwordForm').reset();
+      $('#passwordError').textContent = '';
+      $('#passwordDialog').showModal();
+    }
   } catch (error) {
     console.error(error);
     $('#title').textContent = 'Agenda temporariamente indisponível.';
