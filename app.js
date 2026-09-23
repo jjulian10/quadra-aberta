@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { createAdminNotifications } from './notifications.js';
 import {
   ARENA_SLUG,
   ARENA_SUPPORT_WHATSAPP,
@@ -9,6 +10,19 @@ import {
 const $ = (selector) => document.querySelector(selector);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const adminNotifications = createAdminNotifications({
+  supabase,
+  async openBooking(id, bookingDate) {
+    if (!isAdmin || !arena) return;
+    day = bookingDate;
+    view = 'admin';
+    await refreshBookings(false);
+    openDetail(id);
+  },
+  async openFinance() {
+    if (isAdmin && arena) await setView('finance');
+  }
+});
 const authFlowType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
 const reservationTokenFromUrl = new URLSearchParams(window.location.search).get('reserva');
 let arena = null;
@@ -466,6 +480,7 @@ async function enterAdminPanelForUser(userId) {
   if (!linkedArena) {
     if (!isPlatformAdmin) return false;
 
+    adminNotifications.reset();
     activeArenaSlug = '';
     clearArenaIdentity();
     isAdmin = true;
@@ -513,6 +528,7 @@ async function enterAdminPanelForUser(userId) {
   await syncBookingsRealtime();
   if (changeVersion !== arenaChangeVersion) return false;
 
+  adminNotifications.setContext(arena, userId, courts);
   render();
   return true;
 }
@@ -599,7 +615,10 @@ async function loadBookings() {
 async function refreshBookings(showError = true) {
   try {
     const updated = await loadBookings();
-    if (updated) render();
+    if (updated) {
+      render();
+      if (isAdmin) adminNotifications.refresh();
+    }
   } catch (error) {
     console.error(error);
     if (showError) toast('Não foi possível atualizar a agenda. Tente novamente.');
@@ -703,6 +722,7 @@ function toast(message) {
 }
 
 function syncAccessControls() {
+  if (!isAdmin || !arena) adminNotifications.reset();
   const adminNav = document.querySelector('[data-view="admin"]');
   const financeNav = document.querySelector('[data-view="finance"]');
   const masterNav = document.querySelector('[data-view="master"]');
@@ -1696,6 +1716,7 @@ $('#blockList').addEventListener('click', async (event) => {
   }
 });
 $('#seePlayer').onclick = async () => {
+  adminNotifications.reset();
   await supabase.auth.signOut();
   isAdmin = false;
   isPlatformAdmin = false;
@@ -1814,6 +1835,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
 });
 
 $('#adminLogout').onclick = async () => {
+  adminNotifications.reset();
   await supabase.auth.signOut();
   isAdmin = false;
   isPlatformAdmin = false;
@@ -1855,6 +1877,7 @@ async function switchArena(nextSlug) {
   const previousSlug = arena?.slug || activeArenaSlug || '';
 
   if (!nextSlug) {
+    adminNotifications.reset();
     activeArenaSlug = '';
     const changeVersion = ++arenaChangeVersion;
     bookingLoadVersion += 1;
@@ -1884,6 +1907,7 @@ async function switchArena(nextSlug) {
 
   if (nextSlug === activeArenaSlug && arena?.slug === nextSlug) return;
 
+  adminNotifications.reset();
   activeArenaSlug = nextSlug;
   const changeVersion = ++arenaChangeVersion;
   bookingLoadVersion += 1;
