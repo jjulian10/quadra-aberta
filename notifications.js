@@ -93,7 +93,7 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
       : 'Aguardando confirmação do sinal via Pix';
     popup.innerHTML = `<button type="button" class="notification-toast-close" data-dismiss aria-label="Fechar notificação">×</button>
       <div class="notification-toast-top"><span class="notification-toast-icon" aria-hidden="true">▣</span><div>
-      <span class="notification-toast-label">NOVA RESERVA · AGORA</span><strong>${escapeHtml(item.title)}</strong>
+      <span class="notification-toast-label">NOVA RESERVA · AGORA</span><strong>Nova reserva recebida</strong>
       <span>${escapeHtml(item.name)} reservou um horário</span></div></div>
       <div class="notification-toast-info">${escapeHtml(context.arena.name)} · ${escapeHtml(item.court)}<br>${escapeHtml(dateLabel(item.date))} · ${hours(item)}<br>${paymentLine}</div>
       <div class="notification-toast-actions"><button type="button" data-open-booking="${escapeHtml(item.bookingId)}">Ver reserva →</button><button type="button" data-open-finance>Ir para financeiro ↗</button></div>`;
@@ -140,7 +140,7 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
         const court = snapshot.courts.find((entry) => entry.id === booking.court_id)?.name || 'Quadra';
         const base = {
           bookingId: booking.id, date: booking.booking_date, hour: Number(booking.start_hour),
-          duration: Number(booking.duration), name: booking.customer_name, court,
+          duration: Number(booking.duration), name: booking.customer_name, court, status: booking.status,
           total: Number(booking.amount), received: Number(booking.payment_received_amount || 0)
         };
         if (booking.status !== 'cancelled') next.push({ ...base, key: `${booking.id}:booking`, kind: 'booking', title: 'Nova reserva recebida', detail: `${dateLabel(base.date)} · ${hours(base)}`, time: booking.created_at });
@@ -164,8 +164,9 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
         initialized = true;
       } else {
         const incoming = items.filter((item) => !seen.has(item.key));
-        const newBooking = incoming.find((item) => item.kind === 'booking');
-        if (newBooking) showToast(newBooking);
+        const confirmedPayment = incoming.find((item) => item.kind === 'payment');
+        const newAdminBooking = incoming.find((item) => item.kind === 'booking' && item.status === 'confirmed');
+        if (confirmedPayment || newAdminBooking) showToast(confirmedPayment || newAdminBooking);
       }
       for (const item of items) seen.add(item.key);
       persist('seen', seen);
