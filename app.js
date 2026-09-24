@@ -60,20 +60,8 @@ let pendingCancellationBookingId = null;
 let bookings = [];
 let scheduleBlocks = [];
 
-const rememberedArenaKey = 'quadra-aberta:player-arena';
 const pendingPaymentKey = 'quadra-aberta:pending-pix';
 const pendingPaymentLifetime = 30 * 60 * 1000;
-
-function readRememberedArena() {
-  try { return localStorage.getItem(rememberedArenaKey) || ''; } catch { return ''; }
-}
-
-function rememberArena(slug) {
-  try {
-    if (slug) localStorage.setItem(rememberedArenaKey, slug);
-    else localStorage.removeItem(rememberedArenaKey);
-  } catch { /* A seleção continua funcionando sem armazenamento local. */ }
-}
 
 function clearPendingPayment() {
   try { localStorage.removeItem(pendingPaymentKey); } catch {}
@@ -2023,7 +2011,6 @@ async function switchArena(nextSlug, { silent = false } = {}) {
     isAdmin = false;
     view = 'player';
     clearArenaIdentity();
-    rememberArena('');
     render();
     return;
   }
@@ -2068,7 +2055,6 @@ async function switchArena(nextSlug, { silent = false } = {}) {
     if (changeVersion !== arenaChangeVersion) return;
 
     render();
-    rememberArena(arena.slug);
     const resumed = resumePendingPayment();
     if (!silent && !resumed) toast(`Agenda da ${arena.name} carregada.`);
   } catch (error) {
@@ -2523,6 +2509,9 @@ $('#reservationPortal').addEventListener('click', async (event) => {
 
 async function initialize() {
   try {
+    // Remove a seleção salva pelas versões anteriores, sem afetar pagamentos pendentes.
+    try { localStorage.removeItem('quadra-aberta:player-arena'); } catch {}
+
     if (reservationTokenFromUrl) {
       await openReservationPortal();
       return;
@@ -2533,13 +2522,11 @@ async function initialize() {
     const restored = await restoreAdminSession();
     if (!restored) {
       const pending = readPendingPayment();
-      const lastArena = readRememberedArena();
       const linkedArena = new URLSearchParams(window.location.search).get('arena');
-      const preferredSlug = linkedArena || pending?.arenaSlug || lastArena;
+      const preferredSlug = linkedArena || pending?.arenaSlug;
       if (preferredSlug && arenaCatalog.some((item) => item.slug === preferredSlug)) {
         await switchArena(preferredSlug, { silent: true });
       } else {
-        if (lastArena && !arenaCatalog.some((item) => item.slug === lastArena)) rememberArena('');
         activeArenaSlug = '';
         clearArenaIdentity();
         render();
