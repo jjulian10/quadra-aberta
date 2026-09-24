@@ -181,8 +181,8 @@ function clearArenaIdentity() {
   if ($('#arenaSelectValue')) $('#arenaSelectValue').textContent = 'Selecione uma arena';
   renderArenaPickerOptions();
 
-  if ($('#arenaAvatar')) $('#arenaAvatar').textContent = '•';
-  if ($('#arenaCity')) $('#arenaCity').textContent = 'Selecione uma arena';
+  if ($('#arenaAvatar')) $('#arenaAvatar').textContent = '';
+  if ($('#arenaCity')) $('#arenaCity').textContent = 'Escolha a arena para começar';
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = 'Selecione uma arena';
   if ($('#loginIntro')) $('#loginIntro').textContent = 'Entre com seu e-mail e senha. Sua arena será identificada automaticamente.';
   if ($('#bookingArenaEyebrow')) $('#bookingArenaEyebrow').textContent = 'ARENA';
