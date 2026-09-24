@@ -49,6 +49,7 @@ let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
 let paymentPollTimer = null;
+let paymentCheckInFlight = false;
 let reservationPortalTimer = null;
 let reservationPortalData = null;
 let waitlistSelection = null;
@@ -57,6 +58,64 @@ let pendingCancellationBookingId = null;
 
 let bookings = [];
 let scheduleBlocks = [];
+
+const rememberedArenaKey = 'quadra-aberta:player-arena';
+const pendingPaymentKey = 'quadra-aberta:pending-pix';
+const pendingPaymentLifetime = 30 * 60 * 1000;
+
+function readRememberedArena() {
+  try { return localStorage.getItem(rememberedArenaKey) || ''; } catch { return ''; }
+}
+
+function rememberArena(slug) {
+  try {
+    if (slug) localStorage.setItem(rememberedArenaKey, slug);
+    else localStorage.removeItem(rememberedArenaKey);
+  } catch { /* A seleção continua funcionando sem armazenamento local. */ }
+}
+
+function clearPendingPayment() {
+  try { localStorage.removeItem(pendingPaymentKey); } catch {}
+}
+
+function savePendingPayment(booking) {
+  try {
+    localStorage.setItem(pendingPaymentKey, JSON.stringify({
+      id: booking.id,
+      arenaSlug: booking.arenaSlug,
+      courtId: courts[booking.court]?.id,
+      date: booking.date,
+      hour: booking.hour,
+      duration: booking.duration,
+      name: booking.name,
+      amount: booking.amount,
+      depositAmount: booking.depositAmount,
+      paymentToken: booking.paymentToken,
+      reservationToken: booking.reservationToken,
+      qrCode: booking.qrCode,
+      qrCodeBase64: booking.qrCodeBase64,
+      expiresAt: Date.now() + pendingPaymentLifetime
+    }));
+  } catch { /* O Pix ainda pode ser acompanhado enquanto a página estiver aberta. */ }
+}
+
+function readPendingPayment() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(pendingPaymentKey) || 'null');
+    const valid = saved &&
+      /^[0-9a-f-]{36}$/i.test(saved.id || '') &&
+      /^[0-9a-f-]{36}$/i.test(saved.paymentToken || '') &&
+      typeof saved.arenaSlug === 'string' &&
+      typeof saved.courtId === 'string' &&
+      typeof saved.qrCode === 'string' &&
+      Number.isFinite(saved.expiresAt) &&
+      saved.expiresAt > Date.now() &&
+      saved.expiresAt <= Date.now() + pendingPaymentLifetime;
+    if (valid) return saved;
+    if (saved) clearPendingPayment();
+  } catch { clearPendingPayment(); }
+  return null;
+}
 
 const money = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
@@ -1329,6 +1388,7 @@ function openArenaSupport(booking = lastPlayerBooking) {
 function showConfirmation(booking) {
   if (booking.arenaSlug && booking.arenaSlug !== arena?.slug) return;
   clearInterval(paymentPollTimer);
+  if (readPendingPayment()?.id === booking.id) clearPendingPayment();
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = 'Sinal confirmado!';
@@ -1356,28 +1416,73 @@ function showConfirmation(booking) {
 }
 
 async function checkPaymentStatus(booking) {
+  if (paymentCheckInFlight) return;
   const bookingArenaSlug = booking.arenaSlug || arena?.slug;
-  const { data, error } = await supabase.functions.invoke('check-pix-payment', {
-    body: {
-      booking_id: booking.id,
-      payment_token: booking.paymentToken
+  paymentCheckInFlight = true;
+  try {
+    const { data, error } = await supabase.functions.invoke('check-pix-payment', {
+      body: {
+        booking_id: booking.id,
+        payment_token: booking.paymentToken
+      }
+    });
+
+    if (bookingArenaSlug !== arena?.slug || lastPlayerBooking?.id !== booking.id) return;
+    if (error || !data) {
+      const status = $('#detailContent .payment-waiting span:last-child');
+      if (status) status.textContent = 'Não foi possível verificar agora. Tentaremos novamente.';
+      return;
     }
-  });
 
-  if (error || !data || bookingArenaSlug !== arena?.slug) return;
-
-  const state = data;
-  if (['partial', 'paid'].includes(state.payment_status) && state.booking_status === 'confirmed') {
-    booking.status = 'confirmed';
-    booking.paymentStatus = state.payment_status;
-    booking.paid = state.payment_status === 'paid';
-    booking.paidAmount = Number(state.received_amount ?? booking.depositAmount ?? 0);
-    await refreshBookings(false);
-    showConfirmation(booking);
-  } else if (state.booking_status === 'cancelled') {
-    clearInterval(paymentPollTimer);
-    $('#formError').textContent = 'O Pix expirou e o horário foi liberado. Feche esta janela e tente novamente.';
+    if (['partial', 'paid'].includes(data.payment_status) && data.booking_status === 'confirmed') {
+      booking.status = 'confirmed';
+      booking.paymentStatus = data.payment_status;
+      booking.paid = data.payment_status === 'paid';
+      booking.paidAmount = Number(data.received_amount ?? booking.depositAmount ?? 0);
+      booking.amount = Number(data.total_amount ?? booking.amount);
+      try { await refreshBookings(false); } catch (error) { console.error(error); }
+      if (bookingArenaSlug === arena?.slug && lastPlayerBooking?.id === booking.id) showConfirmation(booking);
+    } else if (data.booking_status === 'cancelled') {
+      clearInterval(paymentPollTimer);
+      booking.paymentStatus = 'cancelled';
+      if (readPendingPayment()?.id === booking.id) clearPendingPayment();
+      $('#formError').textContent = 'O Pix expirou e o horário foi liberado. Feche esta janela e tente novamente.';
+    } else {
+      const status = $('#detailContent .payment-waiting span:last-child');
+      if (status) status.textContent = 'Aguardando confirmação do pagamento…';
+    }
+  } catch (error) {
+    console.error(error);
+    const status = $('#detailContent .payment-waiting span:last-child');
+    if (status) status.textContent = 'Não foi possível verificar agora. Tentaremos novamente.';
+  } finally {
+    paymentCheckInFlight = false;
   }
+}
+
+function resumePendingPayment() {
+  if (isAdmin || !arena) return false;
+  const saved = readPendingPayment();
+  if (!saved || saved.arenaSlug !== arena.slug) return false;
+  const court = courts.findIndex((item) => item.id === saved.courtId);
+  if (court < 0) return false;
+
+  showPixPayment({
+    id: saved.id,
+    arenaSlug: saved.arenaSlug,
+    court,
+    date: saved.date,
+    hour: saved.hour,
+    duration: saved.duration,
+    name: saved.name,
+    amount: saved.amount,
+    depositAmount: saved.depositAmount,
+    paymentToken: saved.paymentToken,
+    reservationToken: saved.reservationToken,
+    qrCode: saved.qrCode,
+    qrCodeBase64: /^[A-Za-z0-9+/=]+$/.test(saved.qrCodeBase64 || '') ? saved.qrCodeBase64 : ''
+  });
+  return true;
 }
 
 function showPixPayment(booking) {
@@ -1487,6 +1592,7 @@ $('#bookingForm').addEventListener('submit', async (event) => {
         qrCodeBase64: data.qr_code_base64,
         ticketUrl: data.ticket_url
       };
+      savePendingPayment(savedBooking);
     }
 
     await loadBookings();
@@ -1873,7 +1979,7 @@ $('#passwordForm').addEventListener('submit', async (event) => {
   }
 });
 
-async function switchArena(nextSlug) {
+async function switchArena(nextSlug, { silent = false } = {}) {
   const previousSlug = arena?.slug || activeArenaSlug || '';
 
   if (!nextSlug) {
@@ -1901,6 +2007,7 @@ async function switchArena(nextSlug) {
     isAdmin = false;
     view = 'player';
     clearArenaIdentity();
+    rememberArena('');
     render();
     return;
   }
@@ -1945,7 +2052,9 @@ async function switchArena(nextSlug) {
     if (changeVersion !== arenaChangeVersion) return;
 
     render();
-    toast(`Agenda da ${arena.name} carregada.`);
+    rememberArena(arena.slug);
+    const resumed = resumePendingPayment();
+    if (!silent && !resumed) toast(`Agenda da ${arena.name} carregada.`);
   } catch (error) {
     console.error(error);
     if (changeVersion !== arenaChangeVersion) return;
@@ -2392,9 +2501,17 @@ async function initialize() {
 
     const restored = await restoreAdminSession();
     if (!restored) {
-      activeArenaSlug = '';
-      clearArenaIdentity();
-      render();
+      const pending = readPendingPayment();
+      const lastArena = readRememberedArena();
+      const preferredSlug = pending?.arenaSlug || lastArena;
+      if (preferredSlug && arenaCatalog.some((item) => item.slug === preferredSlug)) {
+        await switchArena(preferredSlug, { silent: true });
+      } else {
+        if (lastArena && !arenaCatalog.some((item) => item.slug === lastArena)) rememberArena('');
+        activeArenaSlug = '';
+        clearArenaIdentity();
+        render();
+      }
     }
 
     if (restored && ['invite', 'recovery'].includes(authFlowType)) {
@@ -2412,6 +2529,17 @@ async function initialize() {
 }
 
 initialize();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (reservationTokenFromUrl) {
+    if (reservationPortalData?.balance_payment) checkReservationBalancePayment(false);
+    return;
+  }
+  if (!isAdmin && $('#bookingDialog').open && lastPlayerBooking?.paymentStatus === 'pending') {
+    checkPaymentStatus(lastPlayerBooking);
+  }
+});
 
 if (document.modelContext?.registerTool) {
   try {
