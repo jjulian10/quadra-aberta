@@ -102,10 +102,11 @@ aside{background:linear-gradient(165deg,#0c3329 0%,#195641 70%,#27694b 100%);box
   display:block;
   min-width:0;
   flex:1;
-  white-space:nowrap;
+  white-space:normal;
   color:#fff;
-  font-size:13px;
-  line-height:1.25;
+  font-size:12px;
+  font-weight:600;
+  line-height:1.3;
   letter-spacing:-.15px;
 }
 .arena-picker-chevron{
