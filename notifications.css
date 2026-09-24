@@ -9,6 +9,11 @@
 .notification-panel-heading button{border:0;background:transparent;color:#246744;font-size:11px;font-weight:700;padding:6px 0;white-space:nowrap}
 .notification-panel-heading button:disabled{opacity:.4;cursor:default}
 .notification-list{padding:0 10px 10px}
+.notification-push-control{margin:0 16px 8px;padding:12px;border:1px solid #dcebdc;border-radius:10px;background:#f3f9f2;display:grid;gap:7px;color:#435f50;font-size:11px}
+.notification-push-control[hidden]{display:none}
+.notification-push-control button{border:1px solid #b5d2bd;background:#fff;color:#174937;padding:9px 11px;border-radius:8px;font-size:11px;font-weight:800;text-align:left}
+.notification-push-control button:disabled{opacity:.5}
+.notification-push-control small{font-size:11px;color:#4b775b;line-height:1.4}
 .notification-item{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;border:0;border-top:1px solid #ecf0ed;background:white;color:#17362f;padding:13px 8px;filter:none!important}
 .notification-item.unread{background:#f4faf5;border:1px solid #e5f0e7;border-radius:8px;margin-bottom:3px}
 .notification-item:hover{background:#eff7ef}

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { createAdminNotifications } from './notifications.js';
+import { pushSupported, pushEnabled, togglePush } from './push.js';
 import {
   ARENA_SLUG,
   ARENA_SUPPORT_WHATSAPP,
@@ -1501,7 +1502,9 @@ function showPixPayment(booking) {
   $('#price').textContent = money(booking.depositAmount);
   document.querySelector('.price-line span').textContent = 'Sinal para confirmar o horário';
   $('#bookingNote').textContent = 'O código expira em 30 minutos. O restante do valor é tratado diretamente com a arena.';
-  $('#dialogActions').innerHTML = '<button type="button" class="secondary" data-action="support">Suporte da arena</button>';
+  $('#dialogActions').innerHTML = `${pushSupported() && booking.reservationToken
+    ? `<button type="button" class="secondary" data-action="player-push">${pushEnabled('player', booking.id) ? 'Desativar avisos' : 'Receber confirmação no celular'}</button>`
+    : ''}<button type="button" class="secondary" data-action="support">Suporte da arena</button>`;
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
   clearInterval(paymentPollTimer);
   paymentPollTimer = setInterval(() => checkPaymentStatus(booking), 3000);
@@ -1616,6 +1619,19 @@ $('#bookingDialog').addEventListener('click', async (event) => {
   const actionButton = event.target.closest('button[data-action]');
   const action = actionButton?.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
+  if (action === 'player-push' && lastPlayerBooking?.reservationToken) {
+    actionButton.disabled = true;
+    try {
+      const enabled = await togglePush(supabase, {
+        role: 'player', id: lastPlayerBooking.id,
+        reservationToken: lastPlayerBooking.reservationToken,
+      });
+      actionButton.textContent = enabled ? 'Desativar avisos' : 'Receber confirmação no celular';
+      $('#bookingNote').textContent = enabled ? 'Avisos ativados para esta reserva neste aparelho.' : 'Avisos desativados para esta reserva.';
+    } catch (error) { $('#bookingNote').textContent = error.message; }
+    finally { actionButton.disabled = false; }
+    return;
+  }
   if (action === 'close-confirmation') { $('#bookingDialog').close(); return; }
   if (action === 'support') { openArenaSupport(); return; }
   if (action === 'my-reservation') {
@@ -2302,6 +2318,7 @@ function renderReservationPortal(reservation) {
 
         <div class="reservation-actions">
           ${canPayBalance && !balancePayment ? '<button class="primary" type="button" data-reservation-action="pay-balance">Pagar saldo restante via Pix</button>' : ''}
+          ${!cancelled && pushSupported() ? `<button class="secondary" type="button" data-reservation-action="player-push">${pushEnabled('player', reservation.id) ? 'Desativar avisos no celular' : 'Ativar avisos no celular'}</button><small id="reservationPushStatus" role="status">Confirmação, lembrete e novidades da sua reserva.</small>` : ''}
           <button class="secondary" type="button" data-reservation-action="support">Falar com a arena</button>
           ${!cancelled ? '<button class="text-action reservation-cancel-link" type="button" data-reservation-action="cancel-request">Solicitar cancelamento</button>' : ''}
         </div>
@@ -2451,6 +2468,20 @@ $('#reservationPortal').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-reservation-action]');
   const action = button?.dataset.reservationAction;
   if (!action) return;
+  if (action === 'player-push' && reservationPortalData && reservationTokenFromUrl) {
+    button.disabled = true;
+    try {
+      const enabled = await togglePush(supabase, {
+        role: 'player', id: reservationPortalData.id,
+        reservationToken: reservationTokenFromUrl,
+      });
+      button.textContent = enabled ? 'Desativar avisos no celular' : 'Ativar avisos no celular';
+      $('#reservationPushStatus').textContent = enabled
+        ? 'Avisos ativados para esta reserva.' : 'Avisos desativados neste aparelho.';
+    } catch (error) { $('#reservationPushStatus').textContent = error.message; }
+    finally { button.disabled = false; }
+    return;
+  }
 
   if (action === 'back') {
     const url = new URL(window.location.href);
@@ -2503,7 +2534,8 @@ async function initialize() {
     if (!restored) {
       const pending = readPendingPayment();
       const lastArena = readRememberedArena();
-      const preferredSlug = pending?.arenaSlug || lastArena;
+      const linkedArena = new URLSearchParams(window.location.search).get('arena');
+      const preferredSlug = linkedArena || pending?.arenaSlug || lastArena;
       if (preferredSlug && arenaCatalog.some((item) => item.slug === preferredSlug)) {
         await switchArena(preferredSlug, { silent: true });
       } else {

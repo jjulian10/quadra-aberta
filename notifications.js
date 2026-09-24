@@ -1,4 +1,5 @@
 // Notificações administrativas derivadas das reservas da arena autenticada.
+import { pushSupported, pushEnabled, togglePush } from './push.js';
 export function createAdminNotifications({ supabase, openBooking, openFinance }) {
   const anchor = document.querySelector('#notificationAnchor');
   const bell = document.querySelector('#notificationBell');
@@ -7,6 +8,9 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
   const list = document.querySelector('#notificationList');
   const popup = document.querySelector('#notificationToast');
   const readAll = document.querySelector('#notificationReadAll');
+  const pushControl = document.querySelector('#adminPushControl');
+  const pushButton = document.querySelector('#adminPushButton');
+  const pushStatus = document.querySelector('#adminPushStatus');
   let context = null;
   let generation = 0;
   let items = [];
@@ -64,6 +68,7 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
     seen = new Set();
     initialized = false;
     anchor.classList.add('hidden');
+    pushControl.hidden = true;
     closePanel();
     hideToast();
   }
@@ -108,6 +113,8 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
     }
     reset();
     context = { arena, userId, courts };
+    pushControl.hidden = !pushSupported();
+    updatePushButton();
     read = stored('read');
     seen = stored('seen');
     anchor.classList.remove('hidden');
@@ -116,6 +123,31 @@ export function createAdminNotifications({ supabase, openBooking, openFinance })
     }, 45000);
     refresh();
   }
+
+  function updatePushButton() {
+    if (!context) return;
+    pushButton.textContent = pushEnabled('admin', context.userId + ':' + context.arena.id)
+      ? 'Desativar avisos no celular' : 'Ativar avisos no celular';
+  }
+
+  pushButton.addEventListener('click', async () => {
+    if (!context) return;
+    const snapshot = context;
+    pushButton.disabled = true;
+    pushStatus.textContent = '';
+    try {
+      const enabled = await togglePush(supabase, {
+        role: 'admin', id: snapshot.userId + ':' + snapshot.arena.id, arenaId: snapshot.arena.id,
+      });
+      if (context === snapshot) pushStatus.textContent = enabled
+        ? 'Avisos ativados para esta arena.' : 'Avisos desativados para esta arena.';
+    } catch (error) {
+      if (context === snapshot) pushStatus.textContent = error.message;
+    } finally {
+      pushButton.disabled = false;
+      updatePushButton();
+    }
+  });
 
   async function refresh() {
     if (!context) return;
