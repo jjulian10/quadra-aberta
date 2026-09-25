@@ -1234,11 +1234,18 @@ function updateHours(preferred) {
   const court = Number($('#bookingCourt').value);
   const duration = Number($('#bookingDuration').value);
   const free = hours.filter((hour) => isAvailable(court, hour, duration));
+  const totalAmount = courts[court].price * duration;
   $('#bookingHour').innerHTML = free.length ? free.map((hour) => `<option value="${hour}">${hour}:00 – ${hour + duration}:00</option>`).join('') : '<option value="">Sem horários livres</option>';
   if (free.includes(preferred)) $('#bookingHour').value = String(preferred);
-  $('#price').textContent = money(courts[court].price * duration);
+  $('#price').textContent = money(totalAmount);
   const label = document.querySelector('.price-line span');
   if (label) label.textContent = `Total · ${duration} hora${duration > 1 ? 's' : ''}`;
+  const paidInput = $('#adminPaidAmount');
+  if (paidInput) {
+    paidInput.max = totalAmount.toFixed(2);
+    const currentPaid = Number(paidInput.value || 0);
+    if (currentPaid > totalAmount) paidInput.value = totalAmount.toFixed(2);
+  }
   $('#submitBooking').disabled = !free.length;
 }
 
@@ -1250,8 +1257,11 @@ function openBooking(court = 0, hour, duration = 1) {
   $('#formFields').hidden = false;
   $('#customerEmailLabel').classList.toggle('hidden', view === 'admin');
   $('#customerEmail').required = view !== 'admin';
+  $('#adminPaymentField').classList.toggle('hidden', view !== 'admin');
+  $('#adminPaidAmount').required = view === 'admin';
+  $('#adminPaidAmount').value = '0';
   $('#bookingNote').textContent = view === 'admin'
-    ? 'A reserva será adicionada diretamente à agenda.'
+    ? 'A reserva será adicionada diretamente à agenda. Informe quanto o cliente já pagou.'
     : 'O horário será confirmado automaticamente após o pagamento do sinal via Pix.';
   $('#detailContent').innerHTML = '';
   $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
@@ -1601,11 +1611,15 @@ $('#bookingForm').addEventListener('submit', async (event) => {
   const name = $('#customer').value.trim();
   const phone = $('#customerPhone').value.trim();
   const email = $('#customerEmail').value.trim().toLowerCase();
+  const totalAmount = courts[court]?.price * duration;
+  const paidAmount = isAdmin ? Number($('#adminPaidAmount').value) : 0;
   const available = isAvailable(court, hour, duration);
   if (!name) { $('#formError').textContent = 'Informe o nome do responsável.'; return; }
   if (!phone || phone.replace(/\D/g, '').length < 10) { $('#formError').textContent = 'Informe um celular válido com DDD.'; return; }
   if (!isAdmin && !$('#customerEmail').checkValidity()) { $('#formError').textContent = 'Informe um e-mail válido para gerar o Pix.'; return; }
   if (rawHour === '' || !hours.includes(hour) || !courts[court] || !available) { $('#formError').textContent = 'Este horário não está disponível. Escolha outro.'; return; }
+  if (isAdmin && (!Number.isFinite(paidAmount) || paidAmount < 0)) { $('#formError').textContent = 'Informe um valor pago válido.'; return; }
+  if (isAdmin && paidAmount > totalAmount + Number.EPSILON) { $('#formError').textContent = `O valor pago não pode ser maior que ${money(totalAmount)}.`; return; }
 
   const submitButton = $('#submitBooking');
   submitButton.disabled = true;
@@ -1615,6 +1629,11 @@ $('#bookingForm').addEventListener('submit', async (event) => {
     let savedBooking;
 
     if (isAdmin) {
+      const paymentStatus = paidAmount <= 0
+        ? 'pending'
+        : paidAmount + Number.EPSILON >= totalAmount
+          ? 'paid'
+          : 'partial';
       const { data, error } = await supabase
         .from('bookings')
         .insert({
@@ -1626,8 +1645,12 @@ $('#bookingForm').addEventListener('submit', async (event) => {
           customer_name: name,
           customer_phone: phone.replace(/\D/g, ''),
           status: 'confirmed',
-          payment_status: 'pending',
-          amount: courts[court].price * duration
+          payment_status: paymentStatus,
+          amount: totalAmount,
+          deposit_amount: 0,
+          payment_received_amount: paidAmount,
+          payment_provider: paidAmount > 0 ? 'manual' : null,
+          payment_confirmed_at: paidAmount > 0 ? new Date().toISOString() : null
         })
         .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
         .single();
@@ -1683,7 +1706,12 @@ $('#bookingForm').addEventListener('submit', async (event) => {
 
     if (isAdmin) {
       $('#bookingDialog').close();
-      toast('Reserva confirmada e salva na agenda.');
+      const paymentMessage = paidAmount <= 0
+        ? 'sem pagamento registrado'
+        : paidAmount + Number.EPSILON >= totalAmount
+          ? 'pagamento integral registrado'
+          : `pagamento parcial de ${money(paidAmount)} registrado`;
+      toast(`Reserva confirmada e salva na agenda · ${paymentMessage}.`);
     } else {
       showPixPayment(savedBooking);
     }
