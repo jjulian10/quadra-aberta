@@ -429,6 +429,33 @@
 </div>
 </form>
 </dialog>
+<dialog id="rescheduleDialog">
+<form id="rescheduleForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">ALTERAR HORÁRIO</p>
+<h2 id="rescheduleTitle">Alterar horário</h2>
+</div>
+<button type="button" id="closeReschedule" class="close" aria-label="Fechar">×</button>
+</div>
+<p id="rescheduleCurrent"></p>
+<div id="rescheduleFields" class="field-grid">
+<label>Nova data<input id="rescheduleDate" type="date" required></label>
+<label>Quadra<select id="rescheduleCourt" required></select></label>
+<label>Novo horário<select id="rescheduleHour" required></select></label>
+<label>Duração<select id="rescheduleDuration" required>
+<option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option>
+</select></label>
+</div>
+<div id="rescheduleReview" class="reschedule-review hidden" aria-live="polite"></div>
+<p class="form-note" id="rescheduleNote">Somente horários livres podem ser escolhidos. O valor e os pagamentos registrados permanecem iguais.</p>
+<p id="rescheduleError" role="alert"></p>
+<div class="dialog-actions reschedule-actions">
+<button type="button" class="secondary" id="rescheduleBack">Voltar</button>
+<button type="submit" class="primary" id="rescheduleSubmit">Revisar alteração</button>
+</div>
+</form>
+</dialog>
 <dialog id="cancelBookingDialog">
 <form id="cancelBookingForm">
 <div class="dialog-heading">

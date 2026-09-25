@@ -56,6 +56,9 @@ let reservationPortalData = null;
 let waitlistSelection = null;
 let cancellationHistory = [];
 let pendingCancellationBookingId = null;
+let rescheduleBooking = null;
+let rescheduleTarget = null;
+let rescheduleLoadVersion = 0;
 
 let bookings = [];
 let scheduleBlocks = [];
@@ -1308,6 +1311,7 @@ function openDetail(id) {
   $('#detailContent').innerHTML = `<p><strong>${esc(booking.name)}</strong></p><p>Celular: ${esc(booking.phone || 'Não informado')}</p><p>${esc(courts[booking.court].name)} · ${esc(courts[booking.court].sport)} · ${durationLabel(booking.duration)}</p><p>Status: ${booking.status === 'pending' ? 'Aguardando confirmação' : 'Confirmada'}<br>Pagamento: ${paymentLabel}</p>`;
   $('#price').textContent = money(totalAmount);
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
+  $('#bookingNote').textContent = 'Ao alterar o horário, o valor e os pagamentos da reserva permanecem iguais.';
 
   const paymentAction = !booking.paid && booking.status !== 'pending'
     ? `<button type="button" class="primary" data-action="pay">${receivedAmount > 0 ? 'Registrar saldo como pago' : 'Registrar pagamento integral'}</button>`
@@ -1315,9 +1319,97 @@ function openDetail(id) {
 
   $('#dialogActions').innerHTML = (booking.status === 'pending'
     ? '<button type="button" class="primary" data-action="confirm">Confirmar reserva</button>'
-    : paymentAction) + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
+    : paymentAction + '<button type="button" class="primary" data-action="reschedule">Alterar horário</button>')
+    + '<button type="button" class="secondary danger" data-action="cancel">Cancelar reserva</button>';
 
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+}
+
+const rescheduleLabel = (date, court, hour, duration) =>
+  `${labelDate(date)} · ${court.name} · ${hour}:00–${hour + duration}:00`;
+
+async function availableRescheduleHours(date, courtIndex, duration, currentBooking) {
+  const court = courts[courtIndex];
+  const now = new Date();
+  if (!court || !date || date < localDate(now) || ![1, 2, 3].includes(duration)) return [];
+  const [bookingResult, blockResult] = await Promise.all([
+    supabase.from('bookings')
+      .select('id, start_hour, duration')
+      .eq('arena_id', arena.id).eq('court_id', court.id).eq('booking_date', date)
+      .in('status', ['pending', 'confirmed']),
+    supabase.from('schedule_blocks')
+      .select('court_id, start_hour, duration')
+      .eq('arena_id', arena.id).eq('block_date', date)
+      .or(`court_id.is.null,court_id.eq.${court.id}`)
+  ]);
+  if (bookingResult.error) throw bookingResult.error;
+  if (blockResult.error) throw blockResult.error;
+  return hours.filter((hour) => {
+    if (date === localDate(now) && hour <= now.getHours()) return false;
+    if (hour < court.openingHour || hour + duration > court.closingHour) return false;
+    const overlaps = (item) => item.start_hour === null ||
+      (hour < Number(item.start_hour) + Number(item.duration) && Number(item.start_hour) < hour + duration);
+    return !bookingResult.data.some((item) => item.id !== currentBooking.id && overlaps(item)) &&
+      !blockResult.data.some(overlaps);
+  });
+}
+
+async function updateRescheduleHours(preferredHour) {
+  const booking = rescheduleBooking;
+  if (!booking) return;
+  const requestVersion = ++rescheduleLoadVersion;
+  const arenaId = arena.id;
+  const court = Number($('#rescheduleCourt').value);
+  const duration = Number($('#rescheduleDuration').value);
+  const date = $('#rescheduleDate').value;
+  $('#rescheduleHour').innerHTML = '<option value="">Carregando horários...</option>';
+  $('#rescheduleSubmit').disabled = true;
+  $('#rescheduleError').textContent = '';
+  try {
+    const free = await availableRescheduleHours(date, court, duration, booking);
+    if (requestVersion !== rescheduleLoadVersion || arena?.id !== arenaId || !$('#rescheduleDialog').open) return;
+    $('#rescheduleHour').innerHTML = free.length
+      ? free.map((hour) => `<option value="${hour}">${hour}:00 – ${hour + duration}:00</option>`).join('')
+      : '<option value="">Sem horários livres</option>';
+    if (free.includes(preferredHour)) $('#rescheduleHour').value = String(preferredHour);
+    $('#rescheduleSubmit').disabled = !free.length;
+  } catch (error) {
+    if (requestVersion !== rescheduleLoadVersion) return;
+    console.error(error);
+    $('#rescheduleHour').innerHTML = '<option value="">Horários indisponíveis</option>';
+    $('#rescheduleError').textContent = 'Não foi possível consultar os horários. Tente novamente.';
+  }
+}
+
+function closeReschedule(reopen = false) {
+  const bookingId = rescheduleBooking?.id;
+  ++rescheduleLoadVersion;
+  $('#rescheduleDialog').close();
+  rescheduleBooking = null;
+  rescheduleTarget = null;
+  if (reopen && bookingId && bookings.some((item) => item.id === bookingId)) openDetail(bookingId);
+}
+
+function openReschedule(booking) {
+  if (!isAdmin || view !== 'admin' || booking.status !== 'confirmed') return;
+  rescheduleBooking = { ...booking, courtId: courts[booking.court].id, arenaId: arena.id };
+  rescheduleTarget = null;
+  $('#rescheduleTitle').textContent = booking.name;
+  $('#rescheduleCurrent').textContent = `Atual: ${rescheduleLabel(booking.date, courts[booking.court], booking.hour, booking.duration)}`;
+  $('#rescheduleDate').min = localDate(new Date());
+  $('#rescheduleDate').value = booking.date < $('#rescheduleDate').min ? $('#rescheduleDate').min : booking.date;
+  $('#rescheduleCourt').innerHTML = courts.map((court, index) =>
+    `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`).join('');
+  $('#rescheduleCourt').value = String(booking.court);
+  $('#rescheduleDuration').value = String(booking.duration);
+  $('#rescheduleFields').classList.remove('hidden');
+  $('#rescheduleReview').classList.add('hidden');
+  $('#rescheduleNote').textContent = 'Somente horários livres podem ser escolhidos. O valor e os pagamentos registrados permanecem iguais.';
+  $('#rescheduleError').textContent = '';
+  $('#rescheduleSubmit').textContent = 'Revisar alteração';
+  $('#bookingDialog').close();
+  $('#rescheduleDialog').showModal();
+  updateRescheduleHours(booking.hour);
 }
 
 function openCancellationDialog(booking) {
@@ -1685,6 +1777,11 @@ $('#bookingDialog').addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'reschedule') {
+    openReschedule(booking);
+    return;
+  }
+
   if (!changes) return;
 
   try {
@@ -1703,6 +1800,100 @@ $('#bookingDialog').addEventListener('click', async (event) => {
   } catch (error) {
     console.error(error);
     toast('Não foi possível atualizar a reserva.');
+  }
+});
+
+['rescheduleDate', 'rescheduleCourt', 'rescheduleDuration'].forEach((id) => {
+  $(`#${id}`).addEventListener('change', () => updateRescheduleHours(Number($('#rescheduleHour').value)));
+});
+
+$('#closeReschedule').onclick = () => closeReschedule();
+$('#rescheduleDialog').addEventListener('close', () => {
+  ++rescheduleLoadVersion;
+  rescheduleBooking = null;
+  rescheduleTarget = null;
+});
+$('#rescheduleBack').onclick = () => {
+  if (rescheduleTarget) {
+    rescheduleTarget = null;
+    $('#rescheduleFields').classList.remove('hidden');
+    $('#rescheduleReview').classList.add('hidden');
+    $('#rescheduleSubmit').textContent = 'Revisar alteração';
+    $('#rescheduleNote').textContent = 'Somente horários livres podem ser escolhidos. O valor e os pagamentos registrados permanecem iguais.';
+    $('#rescheduleError').textContent = '';
+  } else {
+    closeReschedule(true);
+  }
+};
+
+$('#rescheduleForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const booking = rescheduleBooking;
+  if (!booking || !isAdmin || view !== 'admin' || arena?.id !== booking.arenaId) return;
+
+  const submit = $('#rescheduleSubmit');
+  submit.disabled = true;
+  $('#rescheduleError').textContent = '';
+
+  try {
+    const target = rescheduleTarget || {
+      date: $('#rescheduleDate').value,
+      court: Number($('#rescheduleCourt').value),
+      hour: Number($('#rescheduleHour').value),
+      duration: Number($('#rescheduleDuration').value)
+    };
+    if (!target.date || !$('#rescheduleHour').value || !courts[target.court] ||
+        ![1, 2, 3].includes(target.duration) || !hours.includes(target.hour)) {
+      throw new Error('Selecione um horário válido para a nova reserva.');
+    }
+    if (target.date === booking.date && courts[target.court].id === booking.courtId &&
+        target.hour === booking.hour && target.duration === booking.duration) {
+      throw new Error('Escolha uma data, quadra, horário ou duração diferente.');
+    }
+
+    const free = await availableRescheduleHours(target.date, target.court, target.duration, booking);
+    if (arena?.id !== booking.arenaId || rescheduleBooking?.id !== booking.id) return;
+    if (!free.includes(target.hour)) {
+      rescheduleTarget = null;
+      $('#rescheduleFields').classList.remove('hidden');
+      $('#rescheduleReview').classList.add('hidden');
+      await updateRescheduleHours(target.hour);
+      throw new Error('Esse horário não está mais disponível. Escolha outro.');
+    }
+
+    if (!rescheduleTarget) {
+      rescheduleTarget = target;
+      $('#rescheduleReview').innerHTML = `
+        <span>ANTES</span><strong>${esc(rescheduleLabel(booking.date, courts[booking.court], booking.hour, booking.duration))}</strong>
+        <span>DEPOIS</span><strong>${esc(rescheduleLabel(target.date, courts[target.court], target.hour, target.duration))}</strong>`;
+      $('#rescheduleFields').classList.add('hidden');
+      $('#rescheduleReview').classList.remove('hidden');
+      $('#rescheduleNote').textContent = 'Confirma a mudança? O valor total e os pagamentos da reserva permanecem iguais.';
+      $('#rescheduleSubmit').textContent = 'Confirmar alteração';
+      return;
+    }
+
+    const { data, error } = await supabase.from('bookings')
+      .update({ booking_date: target.date, court_id: courts[target.court].id,
+        start_hour: target.hour, duration: target.duration })
+      .eq('id', booking.id).eq('arena_id', booking.arenaId)
+      .eq('booking_date', booking.date).eq('court_id', booking.courtId)
+      .eq('start_hour', booking.hour).eq('duration', booking.duration)
+      .eq('status', 'confirmed').select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('A reserva mudou enquanto você editava. Atualize a agenda e tente novamente.');
+
+    closeReschedule();
+    day = target.date;
+    await refreshBookings(false);
+    toast('Horário da reserva alterado com sucesso.');
+  } catch (error) {
+    console.error(error);
+    $('#rescheduleError').textContent = error.code === '23P01'
+      ? 'Esse horário acabou de ser reservado. Escolha outro.'
+      : error.message || 'Não foi possível alterar o horário.';
+  } finally {
+    submit.disabled = false;
   }
 });
 
