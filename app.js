@@ -46,6 +46,8 @@ let masterLoading = false;
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
+let financeActivityTab = 'payments';
+let financeActivityExpanded = false;
 let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
@@ -153,6 +155,8 @@ const mapBooking = (booking, isPublic = false) => ({
   paymentStatus: booking.payment_status ?? 'pending',
   paidAmount: Number(booking.payment_received_amount ?? 0),
   paid: booking.payment_status === 'paid',
+  paymentProvider: booking.payment_provider || null,
+  paymentConfirmedAt: booking.payment_confirmed_at || null,
   depositAmount: booking.deposit_amount === undefined || booking.deposit_amount === null ? undefined : Number(booking.deposit_amount),
   amount: booking.amount === undefined ? undefined : Number(booking.amount)
 });
@@ -619,7 +623,7 @@ async function loadBookings() {
     const [bookingResult, blockResult, cancellationResult] = await Promise.all([
       supabase
         .from('bookings')
-        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount')
+        .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount, payment_provider, payment_confirmed_at')
         .eq('arena_id', arenaSnapshot.id)
         .gte('booking_date', localDate(firstDate))
         .lte('booking_date', daySnapshot)
@@ -867,6 +871,19 @@ function renderProfitPanel(list) {
   const periodLabel = { day: 'Data selecionada', week: 'Últimos 7 dias', month: 'Últimos 30 dias' }[profitPeriod];
   const cancellations = periodCancellationHistory(profitPeriod);
 
+  const payments = list
+    .filter((booking) => Number(booking.paidAmount || 0) > 0)
+    .slice()
+    .sort((a, b) => {
+      const aTime = a.paymentConfirmedAt
+        ? new Date(a.paymentConfirmedAt).getTime()
+        : new Date(`${a.date}T${String(a.hour).padStart(2, '0')}:00:00`).getTime();
+      const bTime = b.paymentConfirmedAt
+        ? new Date(b.paymentConfirmedAt).getTime()
+        : new Date(`${b.date}T${String(b.hour).padStart(2, '0')}:00:00`).getTime();
+      return bTime - aTime;
+    });
+
   const byCourt = courts.map((court, index) => ({
     name: court.name,
     value: list
@@ -877,32 +894,77 @@ function renderProfitPanel(list) {
   const maxCourt = Math.max(...byCourt.map((item) => item.value), 1);
   const receivedPercent = expected ? Math.min(100, Math.round(received / expected * 100)) : 0;
 
-  const cancellationRows = cancellations.length
-    ? cancellations.map((entry) => `
-      <div class="cancellation-history-row">
-        <div class="cancellation-history-date">
+  const activityItems = financeActivityTab === 'payments' ? payments : cancellations;
+  const visibleActivityItems = financeActivityExpanded ? activityItems : activityItems.slice(0, 3);
+
+  const paymentRows = visibleActivityItems.length
+    ? visibleActivityItems.map((booking) => {
+      const total = bookingTotal(booking);
+      const receivedAmount = Number(booking.paidAmount || 0);
+      const balance = Math.max(total - receivedAmount, 0);
+      const statusLabel = booking.paid ? 'Quitado' : 'Pagamento parcial';
+      const sourceLabel = booking.paymentProvider === 'manual' ? 'Registrado pelo ADM' : 'Pix';
+      const paymentDate = booking.paymentConfirmedAt
+        ? dateTimeLabel(booking.paymentConfirmedAt)
+        : `${labelDate(booking.date)} · ${booking.hour}:00`;
+
+      return `
+        <div class="finance-activity-row payment-activity-row">
+          <div class="finance-activity-date">
+            <span>Recebido em</span>
+            <strong>${esc(paymentDate)}</strong>
+          </div>
+          <div class="finance-activity-person">
+            <strong>${esc(booking.name || 'Cliente')}</strong>
+            <small>${esc(courts[booking.court]?.name || 'Quadra')} · ${booking.hour}:00–${booking.hour + booking.duration}:00</small>
+          </div>
+          <div class="finance-activity-value">
+            <strong>${money(receivedAmount)}</strong>
+            <small>de ${money(total)}</small>
+          </div>
+          <div class="finance-activity-status">
+            <span class="finance-status-pill ${booking.paid ? 'paid' : 'partial'}">${statusLabel}</span>
+            <small>${balance > 0 ? `Saldo ${money(balance)}` : 'Sem saldo pendente'}</small>
+          </div>
+          <div class="finance-activity-source">
+            <span>Origem</span>
+            <strong>${sourceLabel}</strong>
+          </div>
+        </div>`;
+    }).join('')
+    : '<div class="finance-activity-empty">Nenhum pagamento recebido neste período.</div>';
+
+  const cancellationRows = visibleActivityItems.length
+    ? visibleActivityItems.map((entry) => `
+      <div class="finance-activity-row cancellation-activity-row">
+        <div class="finance-activity-date">
+          <span>Reserva</span>
           <strong>${esc(labelDate(entry.bookingDate))}</strong>
           <small>${entry.hour}:00–${entry.hour + entry.duration}:00</small>
         </div>
-        <div class="cancellation-history-court">
-          <strong>${esc(entry.courtName)}</strong>
-          <small>${esc(entry.customerName)}</small>
+        <div class="finance-activity-person">
+          <strong>${esc(entry.customerName)}</strong>
+          <small>${esc(entry.courtName)}</small>
         </div>
-        <div class="cancellation-history-value">
+        <div class="finance-activity-value">
           <strong>${money(entry.receivedAmount)}</strong>
           <small>Recebido antes do cancelamento</small>
         </div>
-        <div class="cancellation-history-reason">
+        <div class="finance-activity-reason">
           <span>Motivo</span>
           <strong>${esc(entry.reason)}</strong>
         </div>
-        <div class="cancellation-history-when">
+        <div class="finance-activity-date">
           <span>Cancelada em</span>
           <strong>${esc(dateTimeLabel(entry.cancelledAt))}</strong>
         </div>
       </div>`
     ).join('')
-    : '<div class="cancellation-history-empty">Nenhum cancelamento registrado neste período.</div>';
+    : '<div class="finance-activity-empty">Nenhum cancelamento registrado neste período.</div>';
+
+  const activityCount = activityItems.length;
+  const visibleCount = visibleActivityItems.length;
+  const activityRows = financeActivityTab === 'payments' ? paymentRows : cancellationRows;
 
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
@@ -925,25 +987,67 @@ function renderProfitPanel(list) {
       <div style="background:#fff4d8;border-radius:9px;padding:14px"><small>Pagamento parcial</small><strong style="display:block;font-size:22px;margin-top:7px">${partial.length}</strong></div>
       <div style="background:#fcf2de;border-radius:9px;padding:14px"><small>Sem pagamento</small><strong style="display:block;font-size:22px;margin-top:7px">${unpaid.length}</strong></div>
     </div>
-    <section class="cancellation-history">
-      <div class="cancellation-history-heading">
+
+    <section class="finance-activity">
+      <div class="finance-activity-heading">
         <div>
-          <p class="eyebrow">AUDITORIA FINANCEIRA</p>
-          <h3>Histórico de cancelamentos</h3>
-          <p>O motivo e os valores recebidos ficam registrados. Reembolsos serão tratados separadamente.</p>
+          <p class="eyebrow">MOVIMENTAÇÕES FINANCEIRAS</p>
+          <h3>Atividade recente</h3>
+          <p>Pagamentos recebidos e cancelamentos ficam organizados em um único histórico.</p>
         </div>
-        <span class="cancellation-history-count">${cancellations.length} ${cancellations.length === 1 ? 'cancelamento' : 'cancelamentos'}</span>
+        <span class="finance-activity-period">${periodLabel}</span>
       </div>
-      <div class="cancellation-history-list">${cancellationRows}</div>
+
+      <div class="finance-activity-toolbar">
+        <div class="finance-activity-tabs" role="tablist" aria-label="Tipo de movimentação">
+          <button type="button" role="tab" aria-selected="${financeActivityTab === 'payments'}" class="${financeActivityTab === 'payments' ? 'active' : ''}" data-finance-activity-tab="payments">
+            Pagamentos <span>${payments.length}</span>
+          </button>
+          <button type="button" role="tab" aria-selected="${financeActivityTab === 'cancellations'}" class="${financeActivityTab === 'cancellations' ? 'active' : ''}" data-finance-activity-tab="cancellations">
+            Cancelamentos <span>${cancellations.length}</span>
+          </button>
+        </div>
+        <span class="finance-activity-counter">${activityCount ? `${visibleCount} de ${activityCount} registros` : 'Nenhum registro'}</span>
+      </div>
+
+      <div class="finance-activity-list">${activityRows}</div>
+
+      ${activityCount > 3 ? `
+        <div class="finance-activity-footer">
+          <button type="button" class="finance-history-toggle" data-finance-activity-expand>
+            ${financeActivityExpanded ? 'Mostrar apenas recentes' : 'Ver histórico completo'} <span aria-hidden="true">→</span>
+          </button>
+        </div>` : ''}
     </section>`;
 
   panel.querySelectorAll('[data-profit-period]').forEach((button) => {
-    button.onclick = () => { profitPeriod = button.dataset.profitPeriod; render(); };
+    button.onclick = () => {
+      profitPeriod = button.dataset.profitPeriod;
+      financeActivityExpanded = false;
+      render();
+    };
   });
+
+  panel.querySelectorAll('[data-finance-activity-tab]').forEach((button) => {
+    button.onclick = () => {
+      financeActivityTab = button.dataset.financeActivityTab;
+      financeActivityExpanded = false;
+      render();
+    };
+  });
+
+  const activityExpand = panel.querySelector('[data-finance-activity-expand]');
+  if (activityExpand) {
+    activityExpand.onclick = () => {
+      financeActivityExpanded = !financeActivityExpanded;
+      render();
+    };
+  }
 
   $('#financeDate').onchange = async (event) => {
     if (event.target.value) {
       day = event.target.value;
+      financeActivityExpanded = false;
       await refreshBookings();
     }
   };
