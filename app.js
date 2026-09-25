@@ -897,74 +897,76 @@ function renderProfitPanel(list) {
   const activityItems = financeActivityTab === 'payments' ? payments : cancellations;
   const visibleActivityItems = financeActivityExpanded ? activityItems : activityItems.slice(0, 3);
 
-  const paymentRows = visibleActivityItems.length
-    ? visibleActivityItems.map((booking) => {
-      const total = bookingTotal(booking);
-      const receivedAmount = Number(booking.paidAmount || 0);
-      const balance = Math.max(total - receivedAmount, 0);
-      const statusLabel = booking.paid ? 'Quitado' : 'Pagamento parcial';
-      const sourceLabel = booking.paymentProvider === 'manual' ? 'Registrado pelo ADM' : 'Pix';
-      const paymentDate = booking.paymentConfirmedAt
-        ? dateTimeLabel(booking.paymentConfirmedAt)
-        : `${labelDate(booking.date)} · ${booking.hour}:00`;
+  let activityRows;
+  if (financeActivityTab === 'payments') {
+    activityRows = visibleActivityItems.length
+      ? visibleActivityItems.map((booking) => {
+        const total = bookingTotal(booking);
+        const receivedAmount = Number(booking.paidAmount || 0);
+        const balance = Math.max(total - receivedAmount, 0);
+        const statusLabel = booking.paid ? 'Quitado' : 'Pagamento parcial';
+        const sourceLabel = booking.paymentProvider === 'manual' ? 'Registrado pelo ADM' : 'Pix';
+        const paymentDate = booking.paymentConfirmedAt
+          ? dateTimeLabel(booking.paymentConfirmedAt)
+          : `${labelDate(booking.date)} · ${booking.hour}:00`;
 
-      return `
-        <div class="finance-activity-row payment-activity-row">
+        return `
+          <div class="finance-activity-row payment-activity-row">
+            <div class="finance-activity-date">
+              <span>Recebido em</span>
+              <strong>${esc(paymentDate)}</strong>
+            </div>
+            <div class="finance-activity-person">
+              <strong>${esc(booking.name || 'Cliente')}</strong>
+              <small>${esc(courts[booking.court]?.name || 'Quadra')} · ${booking.hour}:00–${booking.hour + booking.duration}:00</small>
+            </div>
+            <div class="finance-activity-value">
+              <strong>${money(receivedAmount)}</strong>
+              <small>de ${money(total)}</small>
+            </div>
+            <div class="finance-activity-status">
+              <span class="finance-status-pill ${booking.paid ? 'paid' : 'partial'}">${statusLabel}</span>
+              <small>${balance > 0 ? `Saldo ${money(balance)}` : 'Sem saldo pendente'}</small>
+            </div>
+            <div class="finance-activity-source">
+              <span>Origem</span>
+              <strong>${sourceLabel}</strong>
+            </div>
+          </div>`;
+      }).join('')
+      : '<div class="finance-activity-empty">Nenhum pagamento recebido neste período.</div>';
+  } else {
+    activityRows = visibleActivityItems.length
+      ? visibleActivityItems.map((entry) => `
+        <div class="finance-activity-row cancellation-activity-row">
           <div class="finance-activity-date">
-            <span>Recebido em</span>
-            <strong>${esc(paymentDate)}</strong>
+            <span>Reserva</span>
+            <strong>${esc(labelDate(entry.bookingDate))}</strong>
+            <small>${entry.hour}:00–${entry.hour + entry.duration}:00</small>
           </div>
           <div class="finance-activity-person">
-            <strong>${esc(booking.name || 'Cliente')}</strong>
-            <small>${esc(courts[booking.court]?.name || 'Quadra')} · ${booking.hour}:00–${booking.hour + booking.duration}:00</small>
+            <strong>${esc(entry.customerName)}</strong>
+            <small>${esc(entry.courtName)}</small>
           </div>
           <div class="finance-activity-value">
-            <strong>${money(receivedAmount)}</strong>
-            <small>de ${money(total)}</small>
+            <strong>${money(Number(entry.receivedAmount || 0))}</strong>
+            <small>Recebido antes do cancelamento</small>
           </div>
-          <div class="finance-activity-status">
-            <span class="finance-status-pill ${booking.paid ? 'paid' : 'partial'}">${statusLabel}</span>
-            <small>${balance > 0 ? `Saldo ${money(balance)}` : 'Sem saldo pendente'}</small>
+          <div class="finance-activity-reason">
+            <span>Motivo</span>
+            <strong>${esc(entry.reason)}</strong>
           </div>
-          <div class="finance-activity-source">
-            <span>Origem</span>
-            <strong>${sourceLabel}</strong>
+          <div class="finance-activity-date">
+            <span>Cancelada em</span>
+            <strong>${esc(dateTimeLabel(entry.cancelledAt))}</strong>
           </div>
-        </div>`;
-    }).join('')
-    : '<div class="finance-activity-empty">Nenhum pagamento recebido neste período.</div>';
-
-  const cancellationRows = visibleActivityItems.length
-    ? visibleActivityItems.map((entry) => `
-      <div class="finance-activity-row cancellation-activity-row">
-        <div class="finance-activity-date">
-          <span>Reserva</span>
-          <strong>${esc(labelDate(entry.bookingDate))}</strong>
-          <small>${entry.hour}:00–${entry.hour + entry.duration}:00</small>
-        </div>
-        <div class="finance-activity-person">
-          <strong>${esc(entry.customerName)}</strong>
-          <small>${esc(entry.courtName)}</small>
-        </div>
-        <div class="finance-activity-value">
-          <strong>${money(entry.receivedAmount)}</strong>
-          <small>Recebido antes do cancelamento</small>
-        </div>
-        <div class="finance-activity-reason">
-          <span>Motivo</span>
-          <strong>${esc(entry.reason)}</strong>
-        </div>
-        <div class="finance-activity-date">
-          <span>Cancelada em</span>
-          <strong>${esc(dateTimeLabel(entry.cancelledAt))}</strong>
-        </div>
-      </div>`
-    ).join('')
-    : '<div class="finance-activity-empty">Nenhum cancelamento registrado neste período.</div>';
+        </div>`
+      ).join('')
+      : '<div class="finance-activity-empty">Nenhum cancelamento registrado neste período.</div>';
+  }
 
   const activityCount = activityItems.length;
   const visibleCount = visibleActivityItems.length;
-  const activityRows = financeActivityTab === 'payments' ? paymentRows : cancellationRows;
 
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap">
