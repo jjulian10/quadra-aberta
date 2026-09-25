@@ -1330,8 +1330,7 @@ const rescheduleLabel = (date, court, hour, duration) =>
 
 async function availableRescheduleHours(date, courtIndex, duration, currentBooking) {
   const court = courts[courtIndex];
-  const now = new Date();
-  if (!court || !date || date < localDate(now) || ![1, 2, 3].includes(duration)) return [];
+  if (!court || !date || ![1, 2, 3].includes(duration)) return [];
   const [bookingResult, blockResult] = await Promise.all([
     supabase.from('bookings')
       .select('id, start_hour, duration')
@@ -1345,7 +1344,6 @@ async function availableRescheduleHours(date, courtIndex, duration, currentBooki
   if (bookingResult.error) throw bookingResult.error;
   if (blockResult.error) throw blockResult.error;
   return hours.filter((hour) => {
-    if (date === localDate(now) && hour <= now.getHours()) return false;
     if (hour < court.openingHour || hour + duration > court.closingHour) return false;
     const overlaps = (item) => item.start_hour === null ||
       (hour < Number(item.start_hour) + Number(item.duration) && Number(item.start_hour) < hour + duration);
@@ -1396,15 +1394,17 @@ function openReschedule(booking) {
   rescheduleTarget = null;
   $('#rescheduleTitle').textContent = booking.name;
   $('#rescheduleCurrent').textContent = `Atual: ${rescheduleLabel(booking.date, courts[booking.court], booking.hour, booking.duration)}`;
-  $('#rescheduleDate').min = localDate(new Date());
-  $('#rescheduleDate').value = booking.date < $('#rescheduleDate').min ? $('#rescheduleDate').min : booking.date;
+  // O administrador também pode registrar ou remanejar marcações históricas.
+  // O fluxo público continua protegido pelas validações do Pix e do banco.
+  $('#rescheduleDate').removeAttribute('min');
+  $('#rescheduleDate').value = booking.date;
   $('#rescheduleCourt').innerHTML = courts.map((court, index) =>
     `<option value="${index}">${esc(court.name)} · ${esc(court.sport)}</option>`).join('');
   $('#rescheduleCourt').value = String(booking.court);
   $('#rescheduleDuration').value = String(booking.duration);
   $('#rescheduleFields').classList.remove('hidden');
   $('#rescheduleReview').classList.add('hidden');
-  $('#rescheduleNote').textContent = 'Somente horários livres podem ser escolhidos. O valor e os pagamentos registrados permanecem iguais.';
+  $('#rescheduleNote').textContent = 'Horários livres podem ser escolhidos, inclusive datas anteriores. O valor e os pagamentos registrados permanecem iguais.';
   $('#rescheduleError').textContent = '';
   $('#rescheduleSubmit').textContent = 'Revisar alteração';
   $('#bookingDialog').close();
@@ -1819,7 +1819,7 @@ $('#rescheduleBack').onclick = () => {
     $('#rescheduleFields').classList.remove('hidden');
     $('#rescheduleReview').classList.add('hidden');
     $('#rescheduleSubmit').textContent = 'Revisar alteração';
-    $('#rescheduleNote').textContent = 'Somente horários livres podem ser escolhidos. O valor e os pagamentos registrados permanecem iguais.';
+    $('#rescheduleNote').textContent = 'Horários livres podem ser escolhidos, inclusive datas anteriores. O valor e os pagamentos registrados permanecem iguais.';
     $('#rescheduleError').textContent = '';
   } else {
     closeReschedule(true);
