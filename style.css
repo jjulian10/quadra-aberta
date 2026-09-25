@@ -1300,3 +1300,17 @@ body.reservation-mode>.app{
 #rescheduleDialog input,#rescheduleDialog select{width:100%;min-width:0}
 .reschedule-actions .secondary,.reschedule-actions .primary{flex:1}
 @media(max-width:490px){#rescheduleDialog .field-grid{grid-template-columns:1fr}.reschedule-actions{flex-wrap:wrap}}
+
+
+/* Mobile: impede que a rolagem do dialogo alcance a pagina ao fundo. */
+html:has(dialog[open]),
+body:has(dialog[open]){
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+dialog[open]{
+  max-height:calc(100dvh - 30px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
