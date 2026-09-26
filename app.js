@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createAdminNotifications } from './notifications.js';
-import { pushSupported, pushEnabled, togglePush } from './push.js';
+import { togglePush, promptInstall, rememberReservationForInstall, consumeInstalledReservation } from './push.js';
+import { pushInvite, refreshPushInvites } from './push-onboarding.js';
 import {
   ARENA_SLUG,
   ARENA_SUPPORT_WHATSAPP,
@@ -26,6 +27,12 @@ const adminNotifications = createAdminNotifications({
 });
 const authFlowType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
 const reservationTokenFromUrl = new URLSearchParams(window.location.search).get('reserva');
+const installedReservationToken = !reservationTokenFromUrl && !new URLSearchParams(window.location.search).has('arena')
+  ? consumeInstalledReservation() : null;
+if (installedReservationToken) {
+  window.location.replace(`/?reserva=${encodeURIComponent(installedReservationToken)}`);
+}
+window.addEventListener('quadra:install-changed', refreshPushInvites);
 let arena = null;
 let arenaCatalog = [];
 let activeArenaSlug = '';
@@ -1587,6 +1594,7 @@ function showConfirmation(booking) {
   clearInterval(paymentPollTimer);
   if (readPendingPayment()?.id === booking.id) clearPendingPayment();
   lastPlayerBooking = booking;
+  if (booking.reservationToken) rememberReservationForInstall(booking.reservationToken);
   $('#formFields').hidden = true;
   $('#dialogTitle').textContent = 'Sinal confirmado!';
   $('#dialogInfo').textContent = `${labelDate(booking.date)} · ${booking.hour}:00–${booking.hour + booking.duration}:00`;
@@ -1599,7 +1607,7 @@ function showConfirmation(booking) {
     ? `<div class="reservation-link-box"><span>MINHA RESERVA</span><strong>Acompanhe pagamento, horário e dados da sua reserva.</strong><small>Guarde este link. Ele é exclusivo desta reserva.</small></div>`
     : '';
 
-  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Recebemos o sinal via Pix e o horário já está garantido na agenda da arena.</p></div><p><strong>Informações do pagamento</strong></p><p>• Valor total da reserva: ${money(totalAmount)}.<br>• Valor recebido: ${money(receivedAmount)}.<br>• Saldo restante: ${money(remainingAmount)}.<br>• Situação: ${remainingAmount > 0 ? 'Pagamento parcial' : 'Pagamento integral'}.</p>${reservationAccess}`;
+  $('#detailContent').innerHTML = `<div style="background:#eaf3df;border-radius:10px;padding:16px;margin:12px 0 18px"><strong>Reserva confirmada para ${esc(booking.name)}.</strong><p style="margin:8px 0 0;font-size:13px;color:#537047">Recebemos o sinal via Pix e o horário já está garantido na agenda da arena.</p></div>${booking.reservationToken ? pushInvite(booking.id) : ''}<p><strong>Informações do pagamento</strong></p><p>• Valor total da reserva: ${money(totalAmount)}.<br>• Valor recebido: ${money(receivedAmount)}.<br>• Saldo restante: ${money(remainingAmount)}.<br>• Situação: ${remainingAmount > 0 ? 'Pagamento parcial' : 'Pagamento integral'}.</p>${reservationAccess}`;
   $('#price').textContent = money(totalAmount);
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#bookingNote').textContent = booking.reservationToken
@@ -1610,6 +1618,7 @@ function showConfirmation(booking) {
     : '<button type="button" class="primary" data-action="close-confirmation">Concluir</button><button type="button" class="secondary" data-action="support">Suporte da arena</button>';
 
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
+  $('#bookingDialog').scrollTop = 0;
 }
 
 async function checkPaymentStatus(booking) {
@@ -1698,9 +1707,7 @@ function showPixPayment(booking) {
   $('#price').textContent = money(booking.depositAmount);
   document.querySelector('.price-line span').textContent = 'Sinal para confirmar o horário';
   $('#bookingNote').textContent = 'O código expira em 30 minutos. O restante do valor é tratado diretamente com a arena.';
-  $('#dialogActions').innerHTML = `${pushSupported() && booking.reservationToken
-    ? `<button type="button" class="secondary" data-action="player-push">${pushEnabled('player', booking.id) ? 'Desativar avisos' : 'Receber confirmação no celular'}</button>`
-    : ''}<button type="button" class="secondary" data-action="support">Suporte da arena</button>`;
+  $('#dialogActions').innerHTML = '<button type="button" class="secondary" data-action="support">Suporte da arena</button>';
   if (!$('#bookingDialog').open) $('#bookingDialog').showModal();
   clearInterval(paymentPollTimer);
   paymentPollTimer = setInterval(() => checkPaymentStatus(booking), 3000);
@@ -1833,6 +1840,25 @@ $('#bookingDialog').addEventListener('click', async (event) => {
   const actionButton = event.target.closest('button[data-action]');
   const action = actionButton?.dataset.action;
   const booking = bookings.find((item) => item.id === selectedId);
+  if (action === 'dismiss-push') {
+    actionButton.closest('.push-invite')?.remove();
+    return;
+  }
+  if (action === 'install-app') {
+    actionButton.disabled = true;
+    try {
+      const accepted = await promptInstall();
+      refreshPushInvites();
+      const feedback = $('#bookingDialog .push-invite-feedback');
+      if (feedback) feedback.textContent = accepted
+        ? 'Instalação aceita. Abra o app pela tela inicial e ative as notificações.'
+        : 'Você pode instalar mais tarde pelo menu do navegador.';
+    } catch {
+      const feedback = $('#bookingDialog .push-invite-feedback');
+      if (feedback) feedback.textContent = 'Não foi possível abrir a instalação. Tente pelo menu do navegador.';
+    } finally { actionButton.disabled = false; }
+    return;
+  }
   if (action === 'player-push' && lastPlayerBooking?.reservationToken) {
     actionButton.disabled = true;
     try {
@@ -1840,9 +1866,13 @@ $('#bookingDialog').addEventListener('click', async (event) => {
         role: 'player', id: lastPlayerBooking.id,
         reservationToken: lastPlayerBooking.reservationToken,
       });
-      actionButton.textContent = enabled ? 'Desativar avisos' : 'Receber confirmação no celular';
-      $('#bookingNote').textContent = enabled ? 'Avisos ativados para esta reserva neste aparelho.' : 'Avisos desativados para esta reserva.';
-    } catch (error) { $('#bookingNote').textContent = error.message; }
+      refreshPushInvites();
+      const feedback = $('#bookingDialog .push-invite-feedback');
+      if (feedback) feedback.textContent = enabled ? 'Pronto! Você receberá avisos desta reserva.' : 'Avisos desativados neste aparelho.';
+    } catch (error) {
+      const feedback = $('#bookingDialog .push-invite-feedback');
+      if (feedback) feedback.textContent = error.message;
+    }
     finally { actionButton.disabled = false; }
     return;
   }
@@ -2629,7 +2659,7 @@ function renderReservationPortal(reservation) {
 
         <div class="reservation-actions">
           ${canPayBalance && !balancePayment ? '<button class="primary" type="button" data-reservation-action="pay-balance">Pagar saldo restante via Pix</button>' : ''}
-          ${!cancelled && pushSupported() ? `<button class="secondary" type="button" data-reservation-action="player-push">${pushEnabled('player', reservation.id) ? 'Desativar avisos no celular' : 'Ativar avisos no celular'}</button><small id="reservationPushStatus" role="status">Confirmação, lembrete e novidades da sua reserva.</small>` : ''}
+          ${!cancelled ? pushInvite(reservation.id, true) : ''}
           <button class="secondary" type="button" data-reservation-action="support">Falar com a arena</button>
           ${!cancelled ? '<button class="text-action reservation-cancel-link" type="button" data-reservation-action="cancel-request">Solicitar cancelamento</button>' : ''}
         </div>
@@ -2786,11 +2816,30 @@ $('#reservationPortal').addEventListener('click', async (event) => {
         role: 'player', id: reservationPortalData.id,
         reservationToken: reservationTokenFromUrl,
       });
-      button.textContent = enabled ? 'Desativar avisos no celular' : 'Ativar avisos no celular';
-      $('#reservationPushStatus').textContent = enabled
-        ? 'Avisos ativados para esta reserva.' : 'Avisos desativados neste aparelho.';
-    } catch (error) { $('#reservationPushStatus').textContent = error.message; }
+      refreshPushInvites();
+      const feedback = $('#reservationPortal .push-invite-feedback');
+      if (feedback) feedback.textContent = enabled
+        ? 'Pronto! Você receberá avisos desta reserva.' : 'Avisos desativados neste aparelho.';
+    } catch (error) {
+      const feedback = $('#reservationPortal .push-invite-feedback');
+      if (feedback) feedback.textContent = error.message;
+    }
     finally { button.disabled = false; }
+    return;
+  }
+  if (action === 'install-app') {
+    button.disabled = true;
+    try {
+      const accepted = await promptInstall();
+      refreshPushInvites();
+      const feedback = $('#reservationPortal .push-invite-feedback');
+      if (feedback) feedback.textContent = accepted
+        ? 'Instalação aceita. Abra o app pela tela inicial e ative as notificações.'
+        : 'Você pode instalar mais tarde pelo menu do navegador.';
+    } catch {
+      const feedback = $('#reservationPortal .push-invite-feedback');
+      if (feedback) feedback.textContent = 'Não foi possível abrir a instalação. Tente pelo menu do navegador.';
+    } finally { button.disabled = false; }
     return;
   }
 

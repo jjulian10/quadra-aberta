@@ -2,6 +2,59 @@ export const pushSupported = () =>
   window.isSecureContext && 'serviceWorker' in navigator &&
   'PushManager' in window && 'Notification' in window;
 
+let installPrompt = null;
+const installChanged = () => window.dispatchEvent(new Event('quadra:install-changed'));
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  installChanged();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  installChanged();
+});
+
+export const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+export const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches ||
+  navigator.standalone === true;
+
+export const canPromptInstall = () => !!installPrompt;
+
+export async function promptInstall() {
+  if (!installPrompt) return false;
+  const pending = installPrompt;
+  installPrompt = null;
+  // The browser requires prompt() to run directly from the player's tap.
+  await pending.prompt();
+  const result = await pending.userChoice;
+  installChanged();
+  return result?.outcome === 'accepted';
+}
+
+const resumeCookie = 'quadra_aberta_install_reservation';
+export function rememberReservationForInstall(token) {
+  if (!/^[0-9a-f-]{36}$/i.test(token || '')) return;
+  try {
+    // iOS copies cookies into a newly installed Home Screen app on recent versions.
+    if (isIos()) document.cookie = `${resumeCookie}=${token}; Max-Age=86400; Path=/; SameSite=Lax; Secure`;
+    localStorage.setItem(resumeCookie, token);
+  } catch { /* The exclusive link in Minha reserva remains available. */ }
+}
+
+export function consumeInstalledReservation() {
+  if (!isInstalled()) return null;
+  const cookie = document.cookie.split('; ').find((item) => item.startsWith(`${resumeCookie}=`));
+  let token = cookie?.slice(resumeCookie.length + 1);
+  try { token ||= localStorage.getItem(resumeCookie); } catch {}
+  if (!/^[0-9a-f-]{36}$/i.test(token || '')) return null;
+  if (cookie) document.cookie = `${resumeCookie}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
+  try { localStorage.removeItem(resumeCookie); } catch {}
+  return token;
+}
+
 const localKey = (role, id) => `quadra-aberta:push:${role}:${id}`;
 
 export function pushEnabled(role, id) {
