@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { createAdminNotifications } from './notifications.js';
-import { togglePush, promptInstall, rememberReservationForInstall, consumeInstalledReservation } from './push.js';
+import { togglePush, promptInstall, rememberReservationForInstall, consumeInstalledReservation, showBookingConfirmationNotification } from './push.js';
 import { pushInvite, refreshPushInvites } from './push-onboarding.js';
 import {
   ARENA_SLUG,
@@ -1866,9 +1866,22 @@ $('#bookingDialog').addEventListener('click', async (event) => {
         role: 'player', id: lastPlayerBooking.id,
         reservationToken: lastPlayerBooking.reservationToken,
       });
+      let confirmationShown = false;
+      if (enabled) {
+        try {
+          confirmationShown = await showBookingConfirmationNotification({
+            id: lastPlayerBooking.id, arenaName: arena.name,
+            courtName: courts[lastPlayerBooking.court]?.name,
+            date: lastPlayerBooking.date, hour: lastPlayerBooking.hour,
+            url: reservationUrl(lastPlayerBooking.reservationToken),
+          });
+        } catch (error) { console.error('Falha ao exibir confirmação:', error); }
+      }
       refreshPushInvites();
       const feedback = $('#bookingDialog .push-invite-feedback');
-      if (feedback) feedback.textContent = enabled ? 'Pronto! Você receberá avisos desta reserva.' : 'Avisos desativados neste aparelho.';
+      if (feedback) feedback.textContent = enabled
+        ? `${confirmationShown ? 'Confirmação enviada!' : 'Avisos ativados.'} Você receberá o lembrete 2 horas antes do jogo, se houver tempo.`
+        : 'Avisos desativados neste aparelho.';
     } catch (error) {
       const feedback = $('#bookingDialog .push-invite-feedback');
       if (feedback) feedback.textContent = error.message;
@@ -2816,10 +2829,22 @@ $('#reservationPortal').addEventListener('click', async (event) => {
         role: 'player', id: reservationPortalData.id,
         reservationToken: reservationTokenFromUrl,
       });
+      let confirmationShown = false;
+      if (enabled) {
+        try {
+          confirmationShown = await showBookingConfirmationNotification({
+            id: reservationPortalData.id, arenaName: reservationPortalData.arena.name,
+            courtName: reservationPortalData.court.name,
+            date: reservationPortalData.booking_date, hour: reservationPortalData.start_hour,
+            url: reservationUrl(reservationTokenFromUrl),
+          });
+        } catch (error) { console.error('Falha ao exibir confirmação:', error); }
+      }
       refreshPushInvites();
       const feedback = $('#reservationPortal .push-invite-feedback');
       if (feedback) feedback.textContent = enabled
-        ? 'Pronto! Você receberá avisos desta reserva.' : 'Avisos desativados neste aparelho.';
+        ? `${confirmationShown ? 'Confirmação enviada!' : 'Avisos ativados.'} Você receberá o lembrete 2 horas antes do jogo, se houver tempo.`
+        : 'Avisos desativados neste aparelho.';
     } catch (error) {
       const feedback = $('#reservationPortal .push-invite-feedback');
       if (feedback) feedback.textContent = error.message;

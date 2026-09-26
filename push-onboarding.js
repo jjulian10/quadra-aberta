@@ -12,7 +12,7 @@ export function pushInvite(id, portal = false) {
   let body;
 
   if (enabled) {
-    body = `<div class="push-invite-ok"><span class="push-invite-check" aria-hidden="true">✓</span><span>Notificações ativadas para esta reserva neste aparelho.</span></div>
+    body = `<div class="push-invite-ok"><span class="push-invite-check" aria-hidden="true">✓</span><span>Avisos ativados para esta reserva neste aparelho.</span></div>
       <button type="button" class="push-invite-link" ${action}="player-push">Desativar avisos</button>`;
   } else if (denied) {
     body = '<p class="push-invite-hint">As notificações estão bloqueadas neste aparelho. Autorize o Quadra Aberta nas configurações do navegador ou do celular.</p>';
@@ -35,7 +35,7 @@ export function pushInvite(id, portal = false) {
 
   return `<section class="push-invite" data-push-invite="${id}" data-push-portal="${portal}" aria-label="Lembrete do jogo">
     <div class="push-invite-heading"><span class="push-invite-icon">${bell}</span><div><span class="push-invite-kicker">SEU JOGO, NO TEMPO CERTO</span><h3>Lembrete do seu jogo</h3></div></div>
-    <p class="push-invite-copy">Receba um aviso no celular antes do horário da sua reserva.</p>
+    <p class="push-invite-copy">Receba a confirmação no celular ao ativar os avisos e um lembrete 2 horas antes do jogo, se houver tempo.</p>
     <div class="push-invite-body">${body}</div>
     <small class="push-invite-feedback" role="status" aria-live="polite"></small>
     ${!portal && !enabled ? `<button type="button" class="push-invite-dismiss" ${action}="dismiss-push">Agora não</button>` : ''}

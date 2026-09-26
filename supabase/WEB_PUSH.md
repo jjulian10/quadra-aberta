@@ -1,6 +1,6 @@
 # Avisos no celular
 
-O PWA usa `/sw.js` e Web Push. O jogador ativa os avisos durante o Pix ou
+O PWA usa `/sw.js` e Web Push. O jogador ativa os avisos após o Pix ou
 em “Minha reserva”; o administrador ativa no sino de cada arena. O navegador
 pede permissão somente após o toque. A inscrição do administrador exige sessão
 e vínculo com a arena; a do jogador exige o link exclusivo da reserva.
@@ -12,11 +12,13 @@ para clientes. `process-push-notifications` valida o token interno do cron,
 envia os eventos pendentes e remove endpoints revogados. Ambas as funções
 usam autenticação própria, por isso são implantadas com `verify_jwt=false`.
 
-Reservas confirmadas e pagamentos geram avisos; reservas canceladas geram
-avisos de cancelamento. Lembretes são programados para 09h no dia da reserva
-no fuso da arena (ou cinco minutos após uma confirmação tardia, antes do jogo).
-No dia seguinte, às 10h, o jogador recebe convite para avaliar a experiência
-e voltar à agenda daquela arena. Somente dispositivos inscritos recebem Push.
+Ao ativar os avisos, o jogador recebe uma confirmação local da reserva no
+celular; o agendamento também é confirmado na página assim que o Pix confirma.
+O jogador recebe um lembrete por Web Push duas horas antes do jogo, no fuso da
+arena, se ainda houver tempo para programá-lo. Reagendamentos atualizam o
+horário do lembrete pendente. O administrador continua recebendo avisos de
+reserva confirmada e pagamento; cancelamentos geram avisos de cancelamento.
+Somente dispositivos inscritos recebem Push.
 No iPhone, o site precisa estar instalado na tela inicial e a permissão
 de notificações deve ser concedida.
 

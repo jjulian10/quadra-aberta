@@ -118,4 +118,22 @@ export async function togglePush(supabase, context) {
   } catch (error) { throw error; }
 }
 
+// Confirmation can only appear after the player has granted notification access.
+export async function showBookingConfirmationNotification({ id, arenaName, courtName, date, hour, url }) {
+  if (!pushEnabled('player', id)) return false;
+  const key = `quadra-aberta:confirmation-notified:${id}`;
+  try { if (localStorage.getItem(key)) return false; } catch {}
+  const registration = await navigator.serviceWorker.ready;
+  const dateLabel = date?.split('-').reverse().join('/') || '';
+  const when = dateLabel && Number.isInteger(Number(hour))
+    ? `${dateLabel} às ${String(hour).padStart(2, '0')}:00` : '';
+  await registration.showNotification('Sua reserva foi confirmada!', {
+    body: [arenaName, courtName, when].filter(Boolean).join(' · '),
+    icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+    tag: `quadra-confirmed-${id}`, data: { url },
+  });
+  try { localStorage.setItem(key, 'yes'); } catch {}
+  return true;
+}
+
 if (pushSupported()) navigator.serviceWorker.register('/sw.js').catch(console.error);
