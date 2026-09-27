@@ -18,9 +18,38 @@
 </head>
 <body>
 <div class="app-splash" id="appSplash" hidden aria-label="Abrindo Quadra Aberta">
-  <div class="app-splash__court" aria-hidden="true"></div>
+  <svg class="app-splash__waves" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="splashWaveLight" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#c5f277" stop-opacity=".08"/>
+        <stop offset=".45" stop-color="#c5f277" stop-opacity=".9"/>
+        <stop offset="1" stop-color="#c5f277" stop-opacity=".12"/>
+      </linearGradient>
+      <linearGradient id="splashWaveFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#8ac864" stop-opacity=".12"/>
+        <stop offset="1" stop-color="#12372e" stop-opacity="0"/>
+      </linearGradient>
+      <pattern id="splashWaveDots" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".65" fill="#c5f277" opacity=".2"/></pattern>
+    </defs>
+    <g class="app-splash__wave-back">
+      <path d="M-50 95 C140 15 260 310 420 180 S590 70 660 100 V500 H-50Z" fill="url(#splashWaveFill)"/>
+      <path d="M-50 95 C140 15 260 310 420 180 S590 70 660 100" fill="none" stroke="url(#splashWaveLight)" stroke-width="1.3"/>
+      <path d="M-50 110 C140 30 260 325 420 195 S590 85 660 115 M-50 125 C140 45 260 340 420 210 S590 100 660 130 M-50 140 C140 60 260 355 420 225 S590 115 660 145" fill="none" stroke="#75b68a" stroke-opacity=".13" stroke-width=".6"/>
+    </g>
+    <g class="app-splash__wave-front">
+      <path d="M-50 285 C140 110 210 350 380 225 S540 140 660 190 V500 H-50Z" fill="url(#splashWaveDots)" opacity=".45"/>
+      <path d="M-50 285 C140 110 210 350 380 225 S540 140 660 190" fill="none" stroke="url(#splashWaveLight)" stroke-width="1.7"/>
+      <path d="M-50 300 C140 125 210 365 380 240 S540 155 660 205 M-50 315 C140 140 210 380 380 255 S540 170 660 220" fill="none" stroke="#75b68a" stroke-opacity=".14" stroke-width=".6"/>
+    </g>
+  </svg>
+  <div class="app-splash__particles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="app-splash__center">
-    <span class="app-splash__icon" aria-hidden="true"><span>Q</span></span>
+    <div class="app-splash__stage" aria-hidden="true">
+      <span class="app-splash__orbit"></span>
+      <span class="app-splash__orbit-light"></span>
+      <span class="app-splash__satellites"><i></i><i></i><i></i></span>
+      <span class="app-splash__icon"><span>Q</span></span>
+    </div>
     <div class="app-splash__wordmark"><strong>quadra</strong><span>aberta</span></div>
     <p>Seu jogo começa aqui.</p>
   </div>
