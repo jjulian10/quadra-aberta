@@ -46,12 +46,13 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: lookupError } = await supabase
       .from("bookings")
-      .select("id, amount, deposit_amount, payment_status, payment_received_amount")
+      .select("id, status, amount, deposit_amount, payment_status, payment_received_amount")
       .eq("id", bookingId)
       .eq("payment_provider", "mercado_pago")
       .eq("payment_provider_order_id", String(orderId))
       .single();
     if (lookupError) throw lookupError;
+    if (booking.status !== "pending") return response({ received: true, ignored: true });
 
     const receivedAmount = Number(order?.total_amount ?? payment?.amount ?? 0);
     if (receivedAmount + Number.EPSILON < Number(booking.deposit_amount)) {
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
           payment_confirmed_at: new Date().toISOString(),
         })
         .eq("id", booking.id)
+        .eq("status", "pending")
         .eq("payment_status", "pending");
       if (updateError) throw updateError;
     }
