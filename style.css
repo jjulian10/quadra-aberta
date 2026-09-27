@@ -1581,15 +1581,18 @@ dialog[open]{
 .splash-active{overflow:hidden}
 .app-splash__court{position:absolute;inset:0;z-index:-1;opacity:.28;background:linear-gradient(108deg,transparent 23%,#54ac80 23.13%,#54ac80 23.28%,transparent 23.4%),radial-gradient(circle at 12% 26%,transparent 0 21%,#54ac80 21.1% 21.25%,transparent 21.4%),radial-gradient(circle at 104% -9%,transparent 0 28%,#54ac80 28.1% 28.25%,transparent 28.4%),radial-gradient(circle at -14% 105%,transparent 0 28%,#54ac80 28.1% 28.25%,transparent 28.4%);animation:splash-court 1.5s ease-out both}
 .app-splash__center{display:flex;align-items:center;flex-direction:column;width:100%;padding:0 28px;transform:translateY(-3%)}
-.app-splash__icon{width:min(43vw,176px);height:auto;filter:drop-shadow(0 0 34px #c5f27760);animation:splash-appear .85s cubic-bezier(.2,.8,.2,1) both}
+.app-splash__icon{width:min(43vw,176px);height:min(43vw,176px);display:grid;place-items:center;border-radius:27%;background:#c5f277;box-shadow:0 0 42px #c5f27752;color:#12372e;transform:rotate(-6deg);animation:splash-icon .85s cubic-bezier(.2,.8,.2,1) both}
+.app-splash__icon span{font-size:clamp(112px,32vw,145px);font-weight:800;line-height:1;letter-spacing:-.12em;transform:translate(-.06em,-.035em) rotate(6deg)}
 .app-splash__wordmark{margin-top:22px;display:flex;flex-direction:column;align-items:center;line-height:.91;letter-spacing:-.065em;animation:splash-appear .9s .16s both}
 .app-splash__wordmark strong{font-size:clamp(48px,12vw,72px);font-weight:800}
 .app-splash__wordmark span{font-size:clamp(47px,11.8vw,70px);font-weight:400;color:#c5f277}
 .app-splash__center p{margin:27px 0 0;color:#f1f8f2;font-size:clamp(16px,4.5vw,21px);font-weight:400;letter-spacing:-.035em;animation:splash-appear .9s .28s both}
-.app-splash__foot{position:absolute;bottom:max(9vh,calc(env(safe-area-inset-bottom) + 40px));left:50%;width:min(70vw,300px);transform:translateX(-50%);display:grid;gap:13px;color:#d1e8d9;font-size:11px;letter-spacing:.15em;white-space:nowrap;animation:splash-appear .8s .4s both}
+.app-splash__foot{position:absolute;bottom:max(9vh,calc(env(safe-area-inset-bottom) + 40px));left:50%;width:min(70vw,300px);transform:translateX(-50%);display:grid;gap:13px;color:#d1e8d9;font-size:11px;letter-spacing:.1em;white-space:normal;animation:splash-foot .8s .4s both}
 .app-splash__track{height:3px;border-radius:20px;background:#4c826d;overflow:hidden}
 .app-splash__track span{display:block;height:100%;width:100%;background:#c5f277;transform-origin:left;animation:splash-progress 1.45s ease-in-out both}
 @keyframes splash-appear{from{opacity:0;transform:translateY(13px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes splash-icon{from{opacity:0;transform:translateY(13px) scale(.96) rotate(-6deg)}to{opacity:1;transform:translateY(0) scale(1) rotate(-6deg)}}
+@keyframes splash-foot{from{opacity:0}to{opacity:1}}
 @keyframes splash-progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes splash-court{from{opacity:0;transform:scale(1.05)}to{opacity:.28;transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){.app-splash,.app-splash *{animation:none!important;transition:none!important}}
