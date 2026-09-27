@@ -43,6 +43,15 @@ Deno.serve(async (req) => {
 
     if (error || !booking) return json({ error: "Reserva não encontrada." }, 404);
 
+    if (booking.status !== "confirmed") {
+      return json({
+        booking_status: booking.status,
+        payment_status: booking.payment_status,
+        received_amount: Number(booking.payment_received_amount || 0),
+        total_amount: Number(booking.amount || 0),
+      });
+    }
+
     if (booking.payment_status === "paid") {
       return json({
         booking_status: booking.status,
@@ -102,6 +111,7 @@ Deno.serve(async (req) => {
       })
       .eq("id", booking.id)
       .eq("reservation_access_token", token)
+      .eq("status", "confirmed")
       .eq("payment_status", "partial")
       .select("status, payment_status, payment_received_amount, amount")
       .maybeSingle();
