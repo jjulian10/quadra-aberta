@@ -63,9 +63,7 @@ Deno.serve(async (req) => {
         total_amount: Number(data.deposit_amount).toFixed(2),
         payer: {
           email: String(body.customer_email).trim().toLowerCase(),
-          first_name: body.test_mode === true
-            ? "APRO"
-            : String(body.customer_name).trim().split(/\s+/)[0],
+          first_name: String(body.customer_name).trim().split(/\s+/)[0],
         },
         transactions: {
           payments: [{
