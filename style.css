@@ -1574,25 +1574,48 @@ dialog[open]{
     justify-content:flex-start;
   }
 }
-/* Tela de abertura exibida apenas ao iniciar o app instalado. */
+/* Abertura do app instalado: identidade visual comum a todas as modalidades. */
 .app-splash[hidden]{display:none}
-.app-splash{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;overflow:hidden;isolation:isolate;background:radial-gradient(ellipse at 50% 43%,#215b44 0%,#123d30 53%,#082d26 100%);color:#fff;font-family:Manrope,'DM Sans',sans-serif;text-align:center;transition:opacity .35s ease,visibility .35s ease}
+.app-splash{--splash-orbit:min(76vw,40svh,330px);--splash-mark:calc(var(--splash-orbit)*.67);position:fixed;inset:0;z-index:10000;overflow:hidden;isolation:isolate;background:radial-gradient(ellipse at 50% 29%,#245b3e 0%,#103c2e 30%,#082e26 60%,#062820 100%);color:#f5f7f5;font-family:Manrope,'DM Sans',sans-serif;text-align:center;transition:opacity .35s ease,visibility .35s ease}
 .app-splash--leaving{opacity:0;visibility:hidden;pointer-events:none}
 .splash-active{overflow:hidden}
-.app-splash__court{position:absolute;inset:0;z-index:-1;opacity:.28;background:linear-gradient(108deg,transparent 23%,#54ac80 23.13%,#54ac80 23.28%,transparent 23.4%),radial-gradient(circle at 12% 26%,transparent 0 21%,#54ac80 21.1% 21.25%,transparent 21.4%),radial-gradient(circle at 104% -9%,transparent 0 28%,#54ac80 28.1% 28.25%,transparent 28.4%),radial-gradient(circle at -14% 105%,transparent 0 28%,#54ac80 28.1% 28.25%,transparent 28.4%);animation:splash-court 1.5s ease-out both}
-.app-splash__center{display:flex;align-items:center;flex-direction:column;width:100%;padding:0 28px;transform:translateY(-3%)}
-.app-splash__icon{width:min(43vw,176px);height:min(43vw,176px);display:grid;place-items:center;border-radius:27%;background:#c5f277;box-shadow:0 0 42px #c5f27752;color:#12372e;transform:rotate(-6deg);animation:splash-icon .85s cubic-bezier(.2,.8,.2,1) both}
-.app-splash__icon span{font-size:clamp(112px,32vw,145px);font-weight:800;line-height:1;letter-spacing:-.12em;transform:translate(-.06em,-.035em) rotate(6deg)}
-.app-splash__wordmark{margin-top:22px;display:flex;flex-direction:column;align-items:center;line-height:.91;letter-spacing:-.065em;animation:splash-appear .9s .16s both}
-.app-splash__wordmark strong{font-size:clamp(48px,12vw,72px);font-weight:800}
-.app-splash__wordmark span{font-size:clamp(47px,11.8vw,70px);font-weight:400;color:#c5f277}
-.app-splash__center p{margin:27px 0 0;color:#f1f8f2;font-size:clamp(16px,4.5vw,21px);font-weight:400;letter-spacing:-.035em;animation:splash-appear .9s .28s both}
-.app-splash__foot{position:absolute;bottom:max(9vh,calc(env(safe-area-inset-bottom) + 40px));left:50%;width:min(70vw,300px);transform:translateX(-50%);display:grid;gap:13px;color:#d1e8d9;font-size:11px;letter-spacing:.1em;white-space:normal;animation:splash-foot .8s .4s both}
-.app-splash__track{height:3px;border-radius:20px;background:#4c826d;overflow:hidden}
-.app-splash__track span{display:block;height:100%;width:100%;background:#c5f277;transform-origin:left;animation:splash-progress 1.45s ease-in-out both}
-@keyframes splash-appear{from{opacity:0;transform:translateY(13px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes splash-icon{from{opacity:0;transform:translateY(13px) scale(.96) rotate(-6deg)}to{opacity:1;transform:translateY(0) scale(1) rotate(-6deg)}}
-@keyframes splash-foot{from{opacity:0}to{opacity:1}}
+.app-splash__center{position:absolute;top:max(8svh,env(safe-area-inset-top));left:0;right:0;display:flex;align-items:center;flex-direction:column;padding:0 24px;z-index:2}
+.app-splash__stage{position:relative;width:var(--splash-orbit);height:var(--splash-orbit);display:grid;place-items:center}
+.app-splash__stage::before{content:"";position:absolute;inset:6%;border-radius:50%;background:radial-gradient(circle,#b7ef7138,transparent 70%);animation:splash-halo 2.2s ease-out both}
+.app-splash__orbit{position:absolute;inset:0;border:1px solid #c5f27724;border-radius:50%;animation:splash-fade .85s ease both}
+.app-splash__orbit-light{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from -90deg,transparent 0deg,#c5f27715 65deg,#c5f277 110deg,transparent 123deg,transparent 270deg,#c5f27755 307deg,transparent 320deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#000 calc(100% - 1px));mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#000 calc(100% - 1px));animation:splash-orbit 5s linear infinite}
+.app-splash__satellites{position:absolute;inset:0;animation:splash-orbit 9s linear infinite}
+.app-splash__satellites i{position:absolute;width:3px;height:3px;border-radius:50%;background:#e6ffb2;box-shadow:0 0 8px 2px #c5f27799}
+.app-splash__satellites i:nth-child(1){top:8%;left:22%}
+.app-splash__satellites i:nth-child(2){top:65%;right:2%}
+.app-splash__satellites i:nth-child(3){bottom:11%;left:17%;width:2px;height:2px}
+.app-splash__icon{position:relative;width:var(--splash-mark);height:var(--splash-mark);display:grid;place-items:center;border-radius:27%;background:linear-gradient(140deg,#d4fc95,#c5f277 50%,#bce96f);box-shadow:inset 0 1px 1px #f0ffd7b3,0 0 35px #b4f26040,0 15px 35px #001b2533;color:#12372e;transform:rotate(-6deg);animation:splash-icon .85s .05s cubic-bezier(.2,.8,.2,1) both}
+.app-splash__icon span{font-size:calc(var(--splash-mark)*.82);font-weight:800;line-height:1;letter-spacing:-.12em;transform:translate(-.06em,-.035em) rotate(6deg)}
+.app-splash__wordmark{margin-top:20px;display:flex;align-items:baseline;justify-content:center;line-height:1.1;letter-spacing:-.065em;font-size:clamp(29px,10vw,47px);white-space:nowrap;animation:splash-appear .8s .22s both}
+.app-splash__wordmark strong{font-size:inherit;font-weight:800}
+.app-splash__wordmark span{font-size:inherit;font-weight:400;color:#c5f277}
+.app-splash__center p{margin:13px 0 0;color:#f1f8f2;font-size:clamp(15px,4.5vw,20px);font-weight:400;letter-spacing:-.015em;animation:splash-appear .8s .34s both}
+.app-splash__waves{position:absolute;left:-5%;width:110%;height:47%;top:53%;overflow:visible;pointer-events:none;opacity:.9;animation:splash-fade 1.2s ease-out both}
+.app-splash__wave-back{animation:splash-wave-back 7s ease-in-out infinite alternate}
+.app-splash__wave-front{animation:splash-wave-front 6s ease-in-out infinite alternate}
+.app-splash__particles{position:absolute;inset:0;pointer-events:none}
+.app-splash__particles i{position:absolute;width:2px;height:2px;border-radius:50%;background:#daffa2;box-shadow:0 0 8px 1px #c5f27780;animation:splash-particle 2.8s ease-in-out infinite alternate}
+.app-splash__particles i:nth-child(1){left:15%;top:61%;animation-delay:-.6s}
+.app-splash__particles i:nth-child(2){left:79%;top:62%;animation-delay:-1.2s}
+.app-splash__particles i:nth-child(3){left:58%;top:70%;animation-delay:-.9s}
+.app-splash__particles i:nth-child(4){left:18%;top:77%;animation-delay:-1.8s}
+.app-splash__particles i:nth-child(5){left:86%;top:81%;animation-delay:-.3s}
+.app-splash__foot{position:absolute;bottom:max(8svh,calc(env(safe-area-inset-bottom) + 24px));left:50%;width:min(78vw,300px);transform:translateX(-50%);display:grid;justify-items:center;gap:14px;color:#d3e9b8;font-size:clamp(10px,2.9vw,12px);letter-spacing:.035em;line-height:1.5;z-index:2;animation:splash-fade .8s .4s both}
+.app-splash__track{width:68%;height:4px;border:1px solid #afd88466;border-radius:20px;background:#245942;overflow:hidden;box-shadow:0 0 12px #c5f27715}
+.app-splash__track span{display:block;height:100%;width:100%;border-radius:inherit;background:linear-gradient(90deg,#bbef75,#d9ffac);box-shadow:0 0 10px #c5f27799;transform-origin:left;animation:splash-progress 2.1s ease-in-out both}
+@keyframes splash-appear{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes splash-icon{from{opacity:0;transform:translateY(10px) scale(.92) rotate(-9deg)}to{opacity:1;transform:translateY(0) scale(1) rotate(-6deg)}}
+@keyframes splash-fade{from{opacity:0}to{opacity:1}}
 @keyframes splash-progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-@keyframes splash-court{from{opacity:0;transform:scale(1.05)}to{opacity:.28;transform:scale(1)}}
+@keyframes splash-orbit{to{transform:rotate(360deg)}}
+@keyframes splash-halo{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+@keyframes splash-wave-back{from{transform:translate(-7px,0)}to{transform:translate(8px,14px)}}
+@keyframes splash-wave-front{from{transform:translate(8px,0)}to{transform:translate(-8px,-12px)}}
+@keyframes splash-particle{from{opacity:.35;transform:translateY(3px)}to{opacity:.9;transform:translateY(-5px)}}
+@media(max-height:500px){.app-splash{--splash-orbit:min(48svh,230px)}.app-splash__center{top:3svh}.app-splash__wordmark{font-size:29px;margin-top:8px}.app-splash__center p{font-size:14px;margin-top:6px}.app-splash__foot{bottom:max(3svh,env(safe-area-inset-bottom));gap:6px}}
 @media(prefers-reduced-motion:reduce){.app-splash,.app-splash *{animation:none!important;transition:none!important}}
