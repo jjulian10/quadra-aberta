@@ -14,8 +14,21 @@
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="notifications.css">
+<script src="/splash.js" defer></script>
 </head>
 <body>
+<div class="app-splash" id="appSplash" hidden aria-label="Abrindo Quadra Aberta">
+  <div class="app-splash__court" aria-hidden="true"></div>
+  <div class="app-splash__center">
+    <img class="app-splash__icon" src="/icons/icon-512.png" alt="" width="176" height="176">
+    <div class="app-splash__wordmark"><strong>quadra</strong><span>aberta</span></div>
+    <p>Seu jogo começa aqui.</p>
+  </div>
+  <div class="app-splash__foot" aria-hidden="true">
+    <div class="app-splash__track"><span></span></div>
+    <span>Preparando sua próxima partida</span>
+  </div>
+</div>
 <section class="reservation-portal hidden" id="reservationPortal" aria-live="polite">
   <div class="reservation-shell">
     <div class="reservation-topbar">
