@@ -18,7 +18,7 @@
     window.setTimeout(() => splash.remove(), 350);
   };
 
-  const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 250 : 1550;
+  const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 250 : 2200;
   window.setTimeout(close, duration);
   window.addEventListener("pagehide", close, { once: true });
 })();
