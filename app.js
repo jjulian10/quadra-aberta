@@ -63,6 +63,7 @@ let inventoryEditingId = null;
 let inventorySaleProductId = '';
 let inventorySaleQuantity = 1;
 let inventoryLoading = false;
+let inventoryImagePreviewObjectUrl = '';
 let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
@@ -1088,10 +1089,92 @@ function mapInventoryProduct(product) {
     costPrice: product.cost_price === null || product.cost_price === undefined ? null : Number(product.cost_price),
     stock: Number(product.stock_quantity || 0),
     lowStockThreshold: Number(product.low_stock_threshold || 0),
+    imagePath: product.image_path || null,
     active: product.active !== false,
     createdAt: product.created_at,
     updatedAt: product.updated_at
   };
+}
+
+function inventoryImageUrl(product) {
+  if (!product?.imagePath) return '';
+  return supabase.storage.from('product-images').getPublicUrl(product.imagePath).data.publicUrl || '';
+}
+
+function clearInventoryImagePreviewObjectUrl() {
+  if (!inventoryImagePreviewObjectUrl) return;
+  URL.revokeObjectURL(inventoryImagePreviewObjectUrl);
+  inventoryImagePreviewObjectUrl = '';
+}
+
+function renderInventoryImagePreview(product = null, file = null) {
+  const preview = $('#inventoryImagePreview');
+  if (!preview) return;
+
+  clearInventoryImagePreviewObjectUrl();
+
+  let src = '';
+  let alt = '';
+  if (file) {
+    inventoryImagePreviewObjectUrl = URL.createObjectURL(file);
+    src = inventoryImagePreviewObjectUrl;
+    alt = 'Prévia da nova foto do produto';
+  } else if (product?.imagePath) {
+    src = inventoryImageUrl(product);
+    alt = `Foto de ${product.name}`;
+  }
+
+  preview.classList.toggle('has-image', Boolean(src));
+  preview.innerHTML = src
+    ? `<img src="${esc(src)}" alt="${esc(alt)}">`
+    : '<span aria-hidden="true">◇</span><small>Sem foto</small>';
+}
+
+async function uploadInventoryProductImage(productId, file) {
+  if (!arena || !productId || !file) return null;
+
+  const allowedTypes = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp'
+  };
+  const extension = allowedTypes[file.type];
+
+  if (!extension) throw new Error('Use uma imagem JPG, PNG ou WebP.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('A foto deve ter no máximo 5 MB.');
+
+  const currentProduct = inventoryProducts.find((product) => product.id === productId);
+  const previousPath = currentProduct?.imagePath || null;
+  const uniquePart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${arena.id}/${productId}/${uniquePart}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('product-images')
+    .upload(path, file, {
+      cacheControl: '3600',
+      contentType: file.type,
+      upsert: false
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { error: updateError } = await supabase
+    .from('inventory_products')
+    .update({ image_path: path })
+    .eq('id', productId)
+    .eq('arena_id', arena.id);
+
+  if (updateError) {
+    await supabase.storage.from('product-images').remove([path]);
+    throw updateError;
+  }
+
+  if (previousPath && previousPath !== path) {
+    const { error: removeError } = await supabase.storage.from('product-images').remove([previousPath]);
+    if (removeError) console.warn('Não foi possível remover a foto anterior do produto.', removeError);
+  }
+
+  return path;
 }
 
 function mapInventoryMovement(movement) {
@@ -1121,7 +1204,7 @@ async function loadInventoryData() {
     const [productsResult, movementsResult] = await Promise.all([
       supabase
         .from('inventory_products')
-        .select('id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold, active, created_at, updated_at')
+        .select('id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold, image_path, active, created_at, updated_at')
         .eq('arena_id', arenaId)
         .eq('active', true)
         .order('name'),
@@ -1269,7 +1352,9 @@ function inventoryRowsHtml() {
       <tr>
         <td>
           <div class="inventory-product-name">
-            <span class="inventory-product-icon" aria-hidden="true">▣</span>
+            ${product.imagePath
+              ? `<span class="inventory-product-photo"><img src="${esc(inventoryImageUrl(product))}" alt="Foto de ${esc(product.name)}" loading="lazy"></span>`
+              : '<span class="inventory-product-icon" aria-hidden="true">◇</span>'}
             <strong>${esc(product.name)}</strong>
           </div>
         </td>
@@ -1518,6 +1603,8 @@ function openInventoryProductDialog(productId = null) {
   $('#inventoryProductCost').value = product?.costPrice === null || product?.costPrice === undefined ? '' : product.costPrice.toFixed(2);
   $('#inventoryProductStock').value = String(product?.stock ?? 0);
   $('#inventoryProductThreshold').value = String(product?.lowStockThreshold ?? 5);
+  $('#inventoryProductImage').value = '';
+  renderInventoryImagePreview(product);
   $('#submitInventoryProduct').textContent = product ? 'Salvar alterações' : 'Salvar produto';
   $('#inventoryProductDialog').showModal();
 }
@@ -2822,9 +2909,41 @@ if (merchandisePanel) {
 }
 
 $('#closeInventoryProduct').onclick = () => $('#inventoryProductDialog').close();
+
+$('#inventoryProductImage').addEventListener('change', (event) => {
+  const file = event.target.files?.[0] || null;
+  const product = inventoryEditingId
+    ? inventoryProducts.find((item) => item.id === inventoryEditingId)
+    : null;
+
+  if (!file) {
+    renderInventoryImagePreview(product);
+    return;
+  }
+
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    event.target.value = '';
+    $('#inventoryProductError').textContent = 'Use uma imagem JPG, PNG ou WebP.';
+    renderInventoryImagePreview(product);
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    event.target.value = '';
+    $('#inventoryProductError').textContent = 'A foto deve ter no máximo 5 MB.';
+    renderInventoryImagePreview(product);
+    return;
+  }
+
+  $('#inventoryProductError').textContent = '';
+  renderInventoryImagePreview(product, file);
+});
+
 $('#inventoryProductDialog').addEventListener('close', () => {
+  clearInventoryImagePreviewObjectUrl();
   inventoryEditingId = null;
   $('#inventoryProductError').textContent = '';
+  $('#inventoryProductImage').value = '';
 });
 
 $('#inventoryProductForm').addEventListener('submit', async (event) => {
@@ -2848,7 +2967,10 @@ $('#inventoryProductForm').addEventListener('submit', async (event) => {
     if (!Number.isInteger(stock) || stock < 0) throw new Error('Informe uma quantidade de estoque válida.');
     if (!Number.isInteger(threshold) || threshold < 0) throw new Error('Informe um limite de estoque baixo válido.');
 
-    const { error } = await supabase.rpc('save_inventory_product', {
+    const edited = Boolean(inventoryEditingId);
+    const imageFile = $('#inventoryProductImage').files?.[0] || null;
+
+    const { data: savedProductId, error } = await supabase.rpc('save_inventory_product', {
       target_arena_id: arena.id,
       target_name: $('#inventoryProductName').value.trim(),
       target_category: $('#inventoryProductCategory').value.trim(),
@@ -2861,7 +2983,23 @@ $('#inventoryProductForm').addEventListener('submit', async (event) => {
 
     if (error) throw error;
 
-    const edited = Boolean(inventoryEditingId);
+    const productId = savedProductId || inventoryEditingId;
+    if (!inventoryEditingId && productId) inventoryEditingId = productId;
+
+    if (imageFile && productId) {
+      submit.textContent = 'Enviando foto...';
+      try {
+        await uploadInventoryProductImage(productId, imageFile);
+      } catch (imageError) {
+        console.error(imageError);
+        await loadInventoryData();
+        render();
+        $('#inventoryProductError').textContent =
+          'O produto foi salvo, mas não foi possível enviar a foto. Selecione a imagem novamente e tente salvar.';
+        return;
+      }
+    }
+
     $('#inventoryProductDialog').close();
     await loadInventoryData();
     render();
