@@ -1904,3 +1904,72 @@ revoke all on function public.register_inventory_sale(uuid,integer) from public,
 grant execute on function public.save_inventory_product(uuid,text,text,numeric,numeric,integer,integer,uuid) to authenticated;
 grant execute on function public.register_inventory_sale(uuid,integer) to authenticated;
 
+-- Fotos dos produtos no módulo de mercadorias
+alter table public.inventory_products
+  add column if not exists image_path text
+  check (image_path is null or char_length(image_path) <= 500);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'product-images',
+  'product-images',
+  true,
+  5242880,
+  array['image/jpeg','image/png','image/webp']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Arena admins can upload product images" on storage.objects;
+create policy "Arena admins can upload product images"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'product-images'
+  and exists (
+    select 1
+    from public.arena_admins
+    where user_id = (select auth.uid())
+      and arena_id::text = (storage.foldername(name))[1]
+  )
+);
+
+drop policy if exists "Arena admins can update product images" on storage.objects;
+create policy "Arena admins can update product images"
+on storage.objects for update
+to authenticated
+using (
+  bucket_id = 'product-images'
+  and exists (
+    select 1
+    from public.arena_admins
+    where user_id = (select auth.uid())
+      and arena_id::text = (storage.foldername(name))[1]
+  )
+)
+with check (
+  bucket_id = 'product-images'
+  and exists (
+    select 1
+    from public.arena_admins
+    where user_id = (select auth.uid())
+      and arena_id::text = (storage.foldername(name))[1]
+  )
+);
+
+drop policy if exists "Arena admins can delete product images" on storage.objects;
+create policy "Arena admins can delete product images"
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'product-images'
+  and exists (
+    select 1
+    from public.arena_admins
+    where user_id = (select auth.uid())
+      and arena_id::text = (storage.foldername(name))[1]
+  )
+);
+
