@@ -1824,6 +1824,7 @@ function openInventoryProductDialog(productId = null) {
   syncInventoryCatalogSelectionStatus();
   renderInventoryImagePreview(product, null, matchingCatalog);
   $('#submitInventoryProduct').textContent = product ? 'Salvar alterações' : 'Salvar produto';
+  $('#deleteInventoryProduct').classList.toggle('hidden', !product);
   $('#inventoryProductDialog').showModal();
 }
 
@@ -3128,6 +3129,71 @@ if (merchandisePanel) {
 
 $('#closeInventoryProduct').onclick = () => $('#inventoryProductDialog').close();
 
+$('#deleteInventoryProduct').onclick = () => {
+  if (!inventoryEditingId || !isAdmin || !arena) return;
+  const product = inventoryProducts.find((item) => item.id === inventoryEditingId);
+  if (!product) return;
+
+  $('#deleteInventoryProductError').textContent = '';
+  $('#deleteInventoryProductMessage').textContent =
+    `Tem certeza que deseja excluir “${product.name}” do estoque?`;
+  $('#deleteInventoryProductDialog').showModal();
+};
+
+$('#cancelDeleteInventoryProduct').onclick = () => {
+  $('#deleteInventoryProductDialog').close();
+};
+
+$('#confirmDeleteInventoryProduct').onclick = async () => {
+  if (!inventoryEditingId || !isAdmin || !arena) return;
+
+  const product = inventoryProducts.find((item) => item.id === inventoryEditingId);
+  if (!product) {
+    $('#deleteInventoryProductDialog').close();
+    return;
+  }
+
+  const productId = product.id;
+  const productName = product.name;
+  const confirmButton = $('#confirmDeleteInventoryProduct');
+  const cancelButton = $('#cancelDeleteInventoryProduct');
+
+  $('#deleteInventoryProductError').textContent = '';
+  confirmButton.disabled = true;
+  cancelButton.disabled = true;
+  confirmButton.textContent = 'Excluindo...';
+
+  try {
+    const { error } = await supabase
+      .from('inventory_products')
+      .update({ active: false })
+      .eq('id', productId)
+      .eq('arena_id', arena.id)
+      .eq('active', true);
+
+    if (error) throw error;
+
+    if (inventorySaleProductId === productId) {
+      inventorySaleProductId = '';
+      inventorySaleQuantity = 1;
+    }
+
+    $('#deleteInventoryProductDialog').close();
+    $('#inventoryProductDialog').close();
+    await loadInventoryData();
+    render();
+    toast(`${productName} foi excluído do estoque.`);
+  } catch (error) {
+    console.error(error);
+    $('#deleteInventoryProductError').textContent =
+      error.message || 'Não foi possível excluir o produto. Tente novamente.';
+  } finally {
+    confirmButton.disabled = false;
+    cancelButton.disabled = false;
+    confirmButton.textContent = 'Sim, excluir produto';
+  }
+};
+
 $('#inventoryProductName').addEventListener('focus', (event) => {
   renderInventoryCatalogSuggestions(event.target.value);
 });
@@ -3197,6 +3263,7 @@ $('#inventoryProductDialog').addEventListener('close', () => {
   inventoryEditingId = null;
   $('#inventoryProductError').textContent = '';
   $('#inventoryProductImage').value = '';
+  $('#deleteInventoryProduct').classList.add('hidden');
 });
 
 $('#inventoryProductForm').addEventListener('submit', async (event) => {
