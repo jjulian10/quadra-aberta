@@ -2349,3 +2349,19 @@ dialog[open]{
   .inventory-form-grid{grid-template-columns:1fr}
 }
 
+/* Ícones lineares do menu administrativo */
+.nav-icon{
+  width:18px;
+  height:18px;
+  display:inline-grid;
+  place-items:center;
+  margin-right:8px;
+  vertical-align:-4px;
+  color:currentColor;
+}
+.nav-icon svg{
+  width:18px;
+  height:18px;
+  display:block;
+}
+
