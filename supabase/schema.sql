@@ -1623,3 +1623,284 @@ begin
   end if;
 end
 $$;
+
+-- Mercadorias: estoque, vendas e desempenho por arena
+create table if not exists public.inventory_products (
+  id uuid primary key default gen_random_uuid(),
+  arena_id uuid not null references public.arenas(id) on delete cascade,
+  name text not null check (char_length(btrim(name)) between 2 and 100),
+  category text not null default 'Outros' check (char_length(btrim(category)) between 2 and 60),
+  sale_price numeric(10,2) not null check (sale_price >= 0),
+  cost_price numeric(10,2) check (cost_price is null or cost_price >= 0),
+  stock_quantity integer not null default 0 check (stock_quantity >= 0),
+  low_stock_threshold integer not null default 5 check (low_stock_threshold >= 0),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (arena_id, name)
+);
+
+create table if not exists public.inventory_movements (
+  id uuid primary key default gen_random_uuid(),
+  arena_id uuid not null references public.arenas(id) on delete cascade,
+  product_id uuid not null references public.inventory_products(id) on delete cascade,
+  movement_type text not null check (movement_type in ('sale','restock','adjustment')),
+  quantity integer not null check (quantity > 0),
+  unit_price numeric(10,2) not null default 0 check (unit_price >= 0),
+  total_amount numeric(12,2) not null default 0 check (total_amount >= 0),
+  stock_before integer not null check (stock_before >= 0),
+  stock_after integer not null check (stock_after >= 0),
+  created_by uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists inventory_products_arena_idx
+  on public.inventory_products (arena_id, active, name);
+
+create index if not exists inventory_movements_arena_created_idx
+  on public.inventory_movements (arena_id, created_at desc);
+
+create index if not exists inventory_movements_product_created_idx
+  on public.inventory_movements (product_id, created_at desc);
+
+drop trigger if exists inventory_products_set_updated_at on public.inventory_products;
+create trigger inventory_products_set_updated_at
+before update on public.inventory_products
+for each row execute function public.set_updated_at();
+
+alter table public.inventory_products enable row level security;
+alter table public.inventory_movements enable row level security;
+
+drop policy if exists "Admins can view inventory products" on public.inventory_products;
+create policy "Admins can view inventory products"
+on public.inventory_products for select
+to authenticated
+using (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can create inventory products" on public.inventory_products;
+create policy "Admins can create inventory products"
+on public.inventory_products for insert
+to authenticated
+with check (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can update inventory products" on public.inventory_products;
+create policy "Admins can update inventory products"
+on public.inventory_products for update
+to authenticated
+using (private.is_arena_admin(arena_id))
+with check (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can view inventory movements" on public.inventory_movements;
+create policy "Admins can view inventory movements"
+on public.inventory_movements for select
+to authenticated
+using (private.is_arena_admin(arena_id));
+
+drop policy if exists "Admins can create inventory movements" on public.inventory_movements;
+create policy "Admins can create inventory movements"
+on public.inventory_movements for insert
+to authenticated
+with check (private.is_arena_admin(arena_id));
+
+grant select, insert, update on public.inventory_products to authenticated;
+grant select, insert on public.inventory_movements to authenticated;
+
+create or replace function public.save_inventory_product(
+  target_arena_id uuid,
+  target_name text,
+  target_category text,
+  target_sale_price numeric,
+  target_cost_price numeric,
+  target_stock_quantity integer,
+  target_low_stock_threshold integer,
+  target_product_id uuid default null
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  product_id uuid;
+  previous_stock integer := 0;
+  difference integer := 0;
+  movement_kind text;
+begin
+  if not private.is_arena_admin(target_arena_id) then
+    raise exception 'Acesso não autorizado para esta arena.';
+  end if;
+
+  if char_length(btrim(target_name)) not between 2 and 100 then
+    raise exception 'Informe um nome de produto válido.';
+  end if;
+
+  if char_length(btrim(target_category)) not between 2 and 60 then
+    raise exception 'Informe uma categoria válida.';
+  end if;
+
+  if target_sale_price is null or target_sale_price < 0 then
+    raise exception 'Informe um preço de venda válido.';
+  end if;
+
+  if target_cost_price is not null and target_cost_price < 0 then
+    raise exception 'Informe um custo válido.';
+  end if;
+
+  if target_stock_quantity is null or target_stock_quantity < 0 then
+    raise exception 'O estoque não pode ser negativo.';
+  end if;
+
+  if target_low_stock_threshold is null or target_low_stock_threshold < 0 then
+    raise exception 'O alerta de estoque deve ser zero ou maior.';
+  end if;
+
+  if target_product_id is null then
+    insert into public.inventory_products (
+      arena_id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold
+    ) values (
+      target_arena_id,
+      btrim(target_name),
+      btrim(target_category),
+      target_sale_price,
+      target_cost_price,
+      target_stock_quantity,
+      target_low_stock_threshold
+    )
+    returning id into product_id;
+
+    if target_stock_quantity > 0 then
+      insert into public.inventory_movements (
+        arena_id, product_id, movement_type, quantity, unit_price, total_amount,
+        stock_before, stock_after
+      ) values (
+        target_arena_id, product_id, 'restock', target_stock_quantity,
+        coalesce(target_cost_price, 0), 0, 0, target_stock_quantity
+      );
+    end if;
+
+    return product_id;
+  end if;
+
+  select stock_quantity
+  into previous_stock
+  from public.inventory_products
+  where id = target_product_id
+    and arena_id = target_arena_id
+    and active
+  for update;
+
+  if not found then
+    raise exception 'Produto não encontrado.';
+  end if;
+
+  update public.inventory_products
+  set name = btrim(target_name),
+      category = btrim(target_category),
+      sale_price = target_sale_price,
+      cost_price = target_cost_price,
+      stock_quantity = target_stock_quantity,
+      low_stock_threshold = target_low_stock_threshold
+  where id = target_product_id
+    and arena_id = target_arena_id;
+
+  difference := target_stock_quantity - previous_stock;
+
+  if difference <> 0 then
+    movement_kind := case when difference > 0 then 'restock' else 'adjustment' end;
+    insert into public.inventory_movements (
+      arena_id, product_id, movement_type, quantity, unit_price, total_amount,
+      stock_before, stock_after
+    ) values (
+      target_arena_id,
+      target_product_id,
+      movement_kind,
+      abs(difference),
+      coalesce(target_cost_price, 0),
+      0,
+      previous_stock,
+      target_stock_quantity
+    );
+  end if;
+
+  return target_product_id;
+exception
+  when unique_violation then
+    raise exception 'Já existe um produto com esse nome nesta arena.';
+end;
+$$;
+
+create or replace function public.register_inventory_sale(
+  target_product_id uuid,
+  target_quantity integer
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  selected_product public.inventory_products%rowtype;
+  previous_stock integer;
+  next_stock integer;
+  sale_total numeric(12,2);
+begin
+  if target_quantity is null or target_quantity <= 0 then
+    raise exception 'Informe uma quantidade válida.';
+  end if;
+
+  select *
+  into selected_product
+  from public.inventory_products
+  where id = target_product_id
+    and active
+  for update;
+
+  if not found then
+    raise exception 'Produto não encontrado.';
+  end if;
+
+  if not private.is_arena_admin(selected_product.arena_id) then
+    raise exception 'Acesso não autorizado para esta arena.';
+  end if;
+
+  previous_stock := selected_product.stock_quantity;
+
+  if previous_stock < target_quantity then
+    raise exception 'Estoque insuficiente. Disponível: % unidade(s).', previous_stock;
+  end if;
+
+  next_stock := previous_stock - target_quantity;
+  sale_total := selected_product.sale_price * target_quantity;
+
+  update public.inventory_products
+  set stock_quantity = next_stock
+  where id = selected_product.id;
+
+  insert into public.inventory_movements (
+    arena_id, product_id, movement_type, quantity, unit_price, total_amount,
+    stock_before, stock_after
+  ) values (
+    selected_product.arena_id,
+    selected_product.id,
+    'sale',
+    target_quantity,
+    selected_product.sale_price,
+    sale_total,
+    previous_stock,
+    next_stock
+  );
+
+  return jsonb_build_object(
+    'product_id', selected_product.id,
+    'stock_quantity', next_stock,
+    'quantity_sold', target_quantity,
+    'sale_total', sale_total
+  );
+end;
+$$;
+
+revoke all on function public.save_inventory_product(uuid,text,text,numeric,numeric,integer,integer,uuid) from public, anon;
+revoke all on function public.register_inventory_sale(uuid,integer) from public, anon;
+grant execute on function public.save_inventory_product(uuid,text,text,numeric,numeric,integer,integer,uuid) to authenticated;
+grant execute on function public.register_inventory_sale(uuid,integer) to authenticated;
+
