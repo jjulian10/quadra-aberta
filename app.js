@@ -1229,19 +1229,37 @@ function renderInventoryImagePreview(product = null, file = null, catalogProduct
     inventoryImagePreviewObjectUrl = URL.createObjectURL(file);
     src = inventoryImagePreviewObjectUrl;
     alt = 'Prévia da nova foto do produto';
-  } else if (catalogProduct?.imageUrl) {
-    src = catalogProduct.imageUrl;
-    alt = `Foto de ${catalogProduct.name}`;
   } else if (inventoryImageUrl(product)) {
     src = inventoryImageUrl(product);
     alt = `Foto de ${product.name}`;
+  } else if (catalogProduct?.imageUrl) {
+    src = catalogProduct.imageUrl;
+    alt = `Foto de ${catalogProduct.name}`;
   }
 
   preview.classList.toggle('has-image', Boolean(src));
   preview.innerHTML = src
-    ? `<img data-inventory-product-image src="${esc(src)}" alt="${esc(alt)}">`
+    ? `<img data-inventory-product-image referrerpolicy="no-referrer" src="${esc(src)}" alt="${esc(alt)}">`
     : '<span aria-hidden="true">◇</span><small>Sem foto</small>';
 }
+
+function replaceBrokenInventoryImage(img) {
+  if (!img?.matches?.('img[data-inventory-product-image]')) return;
+  const holder = img.parentElement;
+  if (!holder) return;
+
+  if (holder.id === 'inventoryImagePreview') {
+    holder.classList.remove('has-image');
+    holder.innerHTML = '<span aria-hidden="true">◇</span><small>Imagem indisponível</small>';
+    return;
+  }
+
+  holder.innerHTML = '<span class="inventory-image-fallback" aria-hidden="true">◇</span>';
+}
+
+document.addEventListener('error', (event) => {
+  replaceBrokenInventoryImage(event.target);
+}, true);
 
 function inventoryCatalogNormalize(value) {
   return String(value || '')
@@ -1287,7 +1305,7 @@ function renderInventoryCatalogSuggestions(value = '') {
   list.innerHTML = matches.map((item) => `
     <button type="button" class="inventory-catalog-option" data-inventory-catalog-id="${item.id}" role="option">
       <span class="inventory-catalog-thumb">
-        <img data-inventory-product-image src="${esc(item.imageUrl)}" alt="" loading="lazy">
+        <img data-inventory-product-image referrerpolicy="no-referrer" src="${esc(item.imageUrl)}" alt="" loading="lazy">
       </span>
       <span class="inventory-catalog-option-copy">
         <strong>${esc(item.name)}</strong>
@@ -1546,7 +1564,7 @@ function inventoryRowsHtml() {
         <td>
           <div class="inventory-product-name">
             ${inventoryImageUrl(product)
-              ? `<span class="inventory-product-photo"><img data-inventory-product-image src="${esc(inventoryImageUrl(product))}" alt="Foto de ${esc(product.name)}" loading="lazy"></span>`
+              ? `<span class="inventory-product-photo"><img data-inventory-product-image referrerpolicy="no-referrer" src="${esc(inventoryImageUrl(product))}" alt="Foto de ${esc(product.name)}" loading="lazy"></span>`
               : '<span class="inventory-product-icon" aria-hidden="true">◇</span>'}
             <strong>${esc(product.name)}</strong>
           </div>
