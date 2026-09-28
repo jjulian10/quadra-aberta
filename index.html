@@ -459,7 +459,27 @@
 </div>
 <p class="form-note">Ao alterar a quantidade de um produto já cadastrado, o ajuste fica registrado no histórico de movimentações.</p>
 <p id="inventoryProductError" role="alert"></p>
-<div class="dialog-actions"><button class="primary" id="submitInventoryProduct" type="submit">Salvar produto</button></div>
+<div class="dialog-actions inventory-product-actions">
+  <button class="danger-outline hidden" id="deleteInventoryProduct" type="button">Excluir produto</button>
+  <button class="primary" id="submitInventoryProduct" type="submit">Salvar produto</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="deleteInventoryProductDialog" class="inventory-delete-dialog">
+<form method="dialog" id="deleteInventoryProductForm">
+  <div class="inventory-delete-icon" aria-hidden="true">!</div>
+  <div class="inventory-delete-copy">
+    <p class="eyebrow">CONFIRMAR EXCLUSÃO</p>
+    <h2>Excluir produto do estoque?</h2>
+    <p id="deleteInventoryProductMessage">Tem certeza que deseja excluir este produto do estoque?</p>
+    <small>O produto deixará de aparecer no estoque, mas o histórico de vendas e movimentações será preservado.</small>
+  </div>
+  <p id="deleteInventoryProductError" role="alert"></p>
+  <div class="dialog-actions inventory-delete-actions">
+    <button class="secondary" id="cancelDeleteInventoryProduct" type="button">Cancelar</button>
+    <button class="danger" id="confirmDeleteInventoryProduct" type="button">Sim, excluir produto</button>
+  </div>
 </form>
 </dialog>
 <dialog id="loginDialog">
