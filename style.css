@@ -1694,7 +1694,24 @@ dialog[open]{
 }
 @media(max-width:800px){
   .arena-visibility-note{
-    display:none;
+    display:grid;
+    flex:1 1 100%;
+    width:100%;
+    margin-top:0;
+    padding:9px 10px;
+    grid-template-columns:22px minmax(0,1fr);
+    gap:8px;
+  }
+  .arena-visibility-note__icon{
+    width:22px;
+    height:22px;
+  }
+  .arena-visibility-note__copy strong{
+    margin-bottom:3px;
+  }
+  .arena-visibility-note__copy p{
+    font-size:9.5px;
+    line-height:1.4;
   }
 }
 
