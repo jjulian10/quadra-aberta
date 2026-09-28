@@ -2484,3 +2484,144 @@ body.admin-session .arena-visibility-note{
   }
 }
 
+/* Catálogo rápido de mercadorias */
+.inventory-product-catalog-field{
+  display:block;
+  margin:0 0 14px;
+}
+.inventory-catalog-combobox{
+  position:relative;
+  margin-top:6px;
+}
+.inventory-catalog-combobox>input{
+  width:100%;
+}
+.inventory-catalog-help{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.45;
+}
+.inventory-catalog-suggestions{
+  position:absolute;
+  z-index:40;
+  top:calc(100% + 6px);
+  left:0;
+  right:0;
+  max-height:320px;
+  overflow:auto;
+  border:1px solid #dce5dc;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 16px 40px #173c3022;
+  padding:6px;
+}
+.inventory-catalog-suggestions.hidden{display:none!important}
+.inventory-catalog-option{
+  width:100%;
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  min-height:58px;
+  padding:7px 9px;
+  border:0;
+  border-radius:9px;
+  background:#fff;
+  color:var(--ink);
+  text-align:left;
+}
+.inventory-catalog-option:hover,
+.inventory-catalog-option:focus-visible{
+  filter:none;
+  background:#f1f7ed;
+}
+.inventory-catalog-thumb{
+  width:44px;
+  height:44px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border:1px solid #e1e8df;
+  border-radius:9px;
+  background:#fff;
+}
+.inventory-catalog-thumb img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  padding:3px;
+}
+.inventory-catalog-option-copy{
+  min-width:0;
+}
+.inventory-catalog-option-copy strong{
+  display:block;
+  overflow:hidden;
+  color:#203d32;
+  font-size:11px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.inventory-catalog-option-copy small{
+  display:block;
+  margin-top:3px;
+  color:#73867c;
+  font-size:9px;
+}
+.inventory-catalog-check{
+  padding:5px 8px;
+  border-radius:999px;
+  background:#edf6e8;
+  color:#37634a;
+  font-size:8px;
+  font-weight:800;
+}
+.inventory-catalog-empty{
+  padding:14px 12px;
+  color:#6f8078;
+  font-size:10px;
+  line-height:1.5;
+}
+.inventory-catalog-status-field{
+  display:flex;
+  flex-direction:column;
+}
+.inventory-catalog-selection-status{
+  min-height:42px;
+  margin-top:6px;
+  display:flex;
+  align-items:center;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#f8faf8;
+  color:#718078;
+  font-size:10px;
+  font-weight:700;
+}
+.inventory-catalog-selection-status.catalog{
+  border-color:#cfe4c3;
+  background:#eff8e9;
+  color:#2d6544;
+}
+.inventory-image-upload-copy>strong{
+  display:block;
+  margin-bottom:5px;
+  color:#29493c;
+  font-size:11px;
+}
+.inventory-image-upload-copy input[type="file"]{
+  margin-top:8px;
+}
+@media(max-width:520px){
+  .inventory-catalog-option{
+    grid-template-columns:42px minmax(0,1fr);
+  }
+  .inventory-catalog-check{
+    display:none;
+  }
+}
+
