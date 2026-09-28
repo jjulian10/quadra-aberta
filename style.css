@@ -2370,3 +2370,117 @@ body.admin-session .arena-visibility-note{
   display:none!important;
 }
 
+/* Fotos reais dos produtos */
+.inventory-product-photo{
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border:1px solid #e1e8e2;
+  border-radius:10px;
+  background:#fff;
+}
+.inventory-product-photo img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  padding:3px;
+}
+.inventory-product-icon{
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  border:1px solid #e3eadf;
+  border-radius:10px;
+  background:#eff6ea;
+}
+.inventory-image-field{
+  display:block;
+  margin:0 0 14px;
+}
+.inventory-image-upload{
+  display:grid;
+  grid-template-columns:76px minmax(0,1fr);
+  gap:13px;
+  align-items:center;
+  margin-top:7px;
+  padding:11px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:#f8faf7;
+}
+.inventory-image-preview{
+  width:76px;
+  height:76px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:4px;
+  overflow:hidden;
+  border:1px dashed #bed0bf;
+  border-radius:12px;
+  background:#fff;
+  color:#65806e;
+}
+.inventory-image-preview span{
+  font-size:22px;
+}
+.inventory-image-preview small{
+  color:#829189;
+  font-size:9px;
+}
+.inventory-image-preview.has-image{
+  border-style:solid;
+  border-color:#d8e2d7;
+}
+.inventory-image-preview img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  padding:5px;
+  background:#fff;
+}
+.inventory-image-upload-copy{
+  min-width:0;
+}
+.inventory-image-upload-copy input[type="file"]{
+  width:100%;
+  min-height:40px;
+  padding:7px 9px;
+  border:1px solid #dfe7df;
+  border-radius:8px;
+  background:#fff;
+  color:#31473e;
+  font-size:11px;
+}
+.inventory-image-upload-copy input[type="file"]::file-selector-button{
+  margin-right:9px;
+  border:0;
+  border-radius:7px;
+  padding:7px 10px;
+  background:#eaf4e2;
+  color:#285a42;
+  font-weight:800;
+  cursor:pointer;
+}
+.inventory-image-upload-copy small{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.45;
+}
+@media(max-width:520px){
+  .inventory-image-upload{
+    grid-template-columns:62px minmax(0,1fr);
+  }
+  .inventory-image-preview{
+    width:62px;
+    height:62px;
+  }
+}
+
