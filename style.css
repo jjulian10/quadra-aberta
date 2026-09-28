@@ -2365,3 +2365,8 @@ dialog[open]{
   display:block;
 }
 
+/* Oculta a observação de visibilidade no painel administrativo */
+body.admin-session .arena-visibility-note{
+  display:none!important;
+}
+
