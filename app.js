@@ -424,7 +424,25 @@ function renderArenaPickerOptions() {
   const menu = $('#arenaSelectMenu');
   if (!menu) return;
 
-  menu.innerHTML = arenaCatalog.map((item) => {
+  const homeSelected = !activeArenaSlug;
+  const homeOption = `
+    <button
+      class="arena-picker-option arena-picker-home${homeSelected ? ' selected' : ''}"
+      type="button"
+      role="option"
+      aria-selected="${homeSelected}"
+      data-arena-slug=""
+    >
+      <span class="arena-option-avatar" aria-hidden="true">⌂</span>
+      <span class="arena-option-copy">
+        <strong>Início</strong>
+        <small>Todas as arenas</small>
+      </span>
+      <span class="arena-option-check" aria-hidden="true">${homeSelected ? '✓' : ''}</span>
+    </button>
+  `;
+
+  const arenaOptions = arenaCatalog.map((item) => {
     const selected = item.slug === activeArenaSlug;
     return `
       <button
@@ -443,6 +461,8 @@ function renderArenaPickerOptions() {
       </button>
     `;
   }).join('');
+
+  menu.innerHTML = homeOption + arenaOptions;
 }
 
 function closeArenaPicker() {
@@ -3676,6 +3696,16 @@ $('#arenaSelectTrigger').addEventListener('click', (event) => {
   event.stopPropagation();
   toggleArenaPicker();
 });
+
+const brandHome = document.querySelector('aside .brand');
+if (brandHome) {
+  brandHome.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (isAdmin) return;
+    closeArenaPicker();
+    switchArena('');
+  });
+}
 
 $('#arenaSelectMenu').addEventListener('click', (event) => {
   const option = event.target.closest('[data-arena-slug]');
