@@ -2114,7 +2114,7 @@ dialog[open]{
 
 .inventory-dashboard{
   display:grid;
-  grid-template-columns:minmax(0,1.25fr) minmax(220px,.72fr) minmax(220px,.72fr);
+  grid-template-columns:minmax(0,1.25fr) repeat(3,minmax(185px,.72fr));
   gap:14px;
 }
 .inventory-dashboard-card{
