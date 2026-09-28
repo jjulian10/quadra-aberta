@@ -64,6 +64,115 @@ let inventorySaleProductId = '';
 let inventorySaleQuantity = 1;
 let inventoryLoading = false;
 let inventoryImagePreviewObjectUrl = '';
+let inventoryCatalogSelectionId = '';
+const INVENTORY_PRODUCT_CATALOG = [
+  {
+    id: 'agua-crystal-500',
+    name: 'Água Crystal sem gás 500ml',
+    category: 'Bebidas',
+    keywords: 'agua água crystal mineral sem gas gás 500 500ml',
+    imageUrl: 'https://hiperideal.vtexassets.com/arquivos/ids/225921-150-auto?aspect=true&height=auto&v=638648775941630000&width=150'
+  },
+  {
+    id: 'coca-cola-350',
+    name: 'Coca-Cola Original 350ml',
+    category: 'Bebidas',
+    keywords: 'coca coke coca-cola refrigerante lata 350 350ml original',
+    imageUrl: 'https://cdn.dooca.store/418/products/coca.jpg?v=1589835707000'
+  },
+  {
+    id: 'coca-cola-2l',
+    name: 'Coca-Cola Original 2L',
+    category: 'Bebidas',
+    keywords: 'coca coke coca-cola refrigerante pet 2l 2 litros original',
+    imageUrl: 'https://andinacocacola.vtexassets.com/arquivos/ids/158758-800-auto?aspect=true&height=auto&v=639156020671730000&width=800'
+  },
+  {
+    id: 'coca-cola-zero-350',
+    name: 'Coca-Cola Zero Açúcar 350ml',
+    category: 'Bebidas',
+    keywords: 'coca coke coca-cola zero sem açúcar acucar refrigerante lata 350 350ml',
+    imageUrl: 'https://img.kalunga.com.br/FotosdeProdutos/348211d.jpg'
+  },
+  {
+    id: 'coca-cola-zero-2l',
+    name: 'Coca-Cola Zero Açúcar 2L',
+    category: 'Bebidas',
+    keywords: 'coca coke coca-cola zero sem açúcar acucar refrigerante pet 2l 2 litros',
+    imageUrl: 'https://andinacocacola.vtexassets.com/arquivos/ids/158892-800-auto?aspect=true&height=auto&v=639156020354770000&width=800'
+  },
+  {
+    id: 'guarana-antarctica-350',
+    name: 'Guaraná Antarctica 350ml',
+    category: 'Bebidas',
+    keywords: 'guarana guaraná antarctica refrigerante lata 350 350ml',
+    imageUrl: 'https://cdn.shopify.com/s/files/1/0670/1111/7281/files/5601045300022-guaran-antarctica-350ml.webp?v=1705495956'
+  },
+  {
+    id: 'guarana-antarctica-2l',
+    name: 'Guaraná Antarctica 2L',
+    category: 'Bebidas',
+    keywords: 'guarana guaraná antarctica refrigerante pet 2l 2 litros',
+    imageUrl: 'https://seabrafoods.com/cdn/shop/products/antarctica-guarana-2l-seabra-foods-online_200x.jpg?v=1706323584'
+  },
+  {
+    id: 'fanta-laranja-2l',
+    name: 'Fanta Laranja 2L',
+    category: 'Bebidas',
+    keywords: 'fanta laranja refrigerante pet 2l 2 litros',
+    imageUrl: 'https://www.agendadascidades.com.br/uploads/images/2020/04/refrigerante-fanta-laranja-pet-2l.png'
+  },
+  {
+    id: 'sprite-2l',
+    name: 'Sprite Original 2L',
+    category: 'Bebidas',
+    keywords: 'sprite limao limão refrigerante pet 2l 2 litros',
+    imageUrl: 'https://andinacocacola.vtexassets.com/arquivos/ids/158750-800-auto?aspect=true&height=auto&v=639240531304730000&width=800'
+  },
+  {
+    id: 'monster-473',
+    name: 'Monster Energy 473ml',
+    category: 'Energéticos',
+    keywords: 'monster energy energetico energético 473 473ml lata',
+    imageUrl: 'https://io.convertiez.com.br/m/superpaguemenos/shop/products/images/23138/large/energetico-monster-energy-473ml_125932.jpg'
+  },
+  {
+    id: 'red-bull-250',
+    name: 'Red Bull Energy Drink 250ml',
+    category: 'Energéticos',
+    keywords: 'red bull redbull energy energetico energético 250 250ml lata',
+    imageUrl: 'https://down-br.img.susercontent.com/file/de3905e6d774d25363e21ac6a2ff7297'
+  },
+  {
+    id: 'heineken-350',
+    name: 'Heineken 350ml',
+    category: 'Cervejas',
+    keywords: 'heineken cerveja beer lata 350 350ml',
+    imageUrl: 'https://estreladistribuicao.agilecdn.com.br/139902.jpg'
+  },
+  {
+    id: 'skol-350',
+    name: 'Skol Pilsen 350ml',
+    category: 'Cervejas',
+    keywords: 'skol cerveja pilsen lata 350 350ml',
+    imageUrl: 'https://cdnx.jumpseller.com/imperio-do-brasil/image/13711474/cerveja_skol_350ml.jpg?1650452486='
+  },
+  {
+    id: 'doritos-84',
+    name: 'Doritos Queijo Nacho 84g',
+    category: 'Salgados',
+    keywords: 'doritos queijo nacho salgadinho snack 84 84g',
+    imageUrl: 'https://paulistaoatacadista.vtexassets.com/arquivos/ids/361722/SalgadinhoElmaChipsDoritos84gQue1.jpg?v=638379141202030000'
+  },
+  {
+    id: 'ruffles-68',
+    name: 'Ruffles Original 68g',
+    category: 'Salgados',
+    keywords: 'ruffles batata chips salgadinho original 68 68g',
+    imageUrl: 'https://www.extrabom.com.br/uploads/produtos/original/193619_extrabom_salgadinhos-snacks_batata-ruffles-original-68g.jpg'
+  }
+];
+
 let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
@@ -1090,6 +1199,7 @@ function mapInventoryProduct(product) {
     stock: Number(product.stock_quantity || 0),
     lowStockThreshold: Number(product.low_stock_threshold || 0),
     imagePath: product.image_path || null,
+    imageUrl: product.image_url || null,
     active: product.active !== false,
     createdAt: product.created_at,
     updatedAt: product.updated_at
@@ -1097,8 +1207,8 @@ function mapInventoryProduct(product) {
 }
 
 function inventoryImageUrl(product) {
-  if (!product?.imagePath) return '';
-  return supabase.storage.from('product-images').getPublicUrl(product.imagePath).data.publicUrl || '';
+  if (product?.imagePath) return supabase.storage.from('product-images').getPublicUrl(product.imagePath).data.publicUrl || '';
+  return product?.imageUrl || '';
 }
 
 function clearInventoryImagePreviewObjectUrl() {
@@ -1107,7 +1217,7 @@ function clearInventoryImagePreviewObjectUrl() {
   inventoryImagePreviewObjectUrl = '';
 }
 
-function renderInventoryImagePreview(product = null, file = null) {
+function renderInventoryImagePreview(product = null, file = null, catalogProduct = null) {
   const preview = $('#inventoryImagePreview');
   if (!preview) return;
 
@@ -1119,15 +1229,98 @@ function renderInventoryImagePreview(product = null, file = null) {
     inventoryImagePreviewObjectUrl = URL.createObjectURL(file);
     src = inventoryImagePreviewObjectUrl;
     alt = 'Prévia da nova foto do produto';
-  } else if (product?.imagePath) {
+  } else if (catalogProduct?.imageUrl) {
+    src = catalogProduct.imageUrl;
+    alt = `Foto de ${catalogProduct.name}`;
+  } else if (inventoryImageUrl(product)) {
     src = inventoryImageUrl(product);
     alt = `Foto de ${product.name}`;
   }
 
   preview.classList.toggle('has-image', Boolean(src));
   preview.innerHTML = src
-    ? `<img src="${esc(src)}" alt="${esc(alt)}">`
+    ? `<img data-inventory-product-image src="${esc(src)}" alt="${esc(alt)}">`
     : '<span aria-hidden="true">◇</span><small>Sem foto</small>';
+}
+
+function inventoryCatalogNormalize(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .trim();
+}
+
+function selectedInventoryCatalogProduct() {
+  return INVENTORY_PRODUCT_CATALOG.find((item) => item.id === inventoryCatalogSelectionId) || null;
+}
+
+function inventoryCatalogMatches(value) {
+  const term = inventoryCatalogNormalize(value);
+  if (!term) return INVENTORY_PRODUCT_CATALOG;
+  return INVENTORY_PRODUCT_CATALOG.filter((item) =>
+    inventoryCatalogNormalize(`${item.name} ${item.category} ${item.keywords}`).includes(term)
+  );
+}
+
+function closeInventoryCatalogSuggestions() {
+  const list = $('#inventoryCatalogSuggestions');
+  const input = $('#inventoryProductName');
+  if (list) list.classList.add('hidden');
+  if (input) input.setAttribute('aria-expanded', 'false');
+}
+
+function renderInventoryCatalogSuggestions(value = '') {
+  const list = $('#inventoryCatalogSuggestions');
+  const input = $('#inventoryProductName');
+  if (!list || !input) return;
+
+  const matches = inventoryCatalogMatches(value);
+  input.setAttribute('aria-expanded', 'true');
+  list.classList.remove('hidden');
+
+  if (!matches.length) {
+    list.innerHTML = '<div class="inventory-catalog-empty">Produto não encontrado. Você pode continuar digitando e cadastrar como produto personalizado.</div>';
+    return;
+  }
+
+  list.innerHTML = matches.map((item) => `
+    <button type="button" class="inventory-catalog-option" data-inventory-catalog-id="${item.id}" role="option">
+      <span class="inventory-catalog-thumb">
+        <img data-inventory-product-image src="${esc(item.imageUrl)}" alt="" loading="lazy">
+      </span>
+      <span class="inventory-catalog-option-copy">
+        <strong>${esc(item.name)}</strong>
+        <small>${esc(item.category)} · imagem pronta</small>
+      </span>
+      <span class="inventory-catalog-check">Selecionar</span>
+    </button>
+  `).join('');
+}
+
+function syncInventoryCatalogSelectionStatus() {
+  const selected = selectedInventoryCatalogProduct();
+  const status = $('#inventoryCatalogSelectionStatus');
+  const source = $('#inventoryImageSourceLabel');
+  if (status) {
+    status.textContent = selected ? selected.name : 'Produto personalizado';
+    status.classList.toggle('catalog', Boolean(selected));
+  }
+  if (source) source.textContent = selected ? 'Imagem pronta do catálogo' : 'Foto personalizada';
+}
+
+function selectInventoryCatalogProduct(catalogId) {
+  const item = INVENTORY_PRODUCT_CATALOG.find((product) => product.id === catalogId);
+  if (!item) return;
+
+  inventoryCatalogSelectionId = item.id;
+  $('#inventoryProductName').value = item.name;
+  $('#inventoryProductCategory').value = item.category;
+  $('#inventoryProductImage').value = '';
+  $('#inventoryProductError').textContent = '';
+  syncInventoryCatalogSelectionStatus();
+  renderInventoryImagePreview(null, null, item);
+  closeInventoryCatalogSuggestions();
 }
 
 async function uploadInventoryProductImage(productId, file) {
@@ -1204,7 +1397,7 @@ async function loadInventoryData() {
     const [productsResult, movementsResult] = await Promise.all([
       supabase
         .from('inventory_products')
-        .select('id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold, image_path, active, created_at, updated_at')
+        .select('id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold, image_path, image_url, active, created_at, updated_at')
         .eq('arena_id', arenaId)
         .eq('active', true)
         .order('name'),
@@ -1352,8 +1545,8 @@ function inventoryRowsHtml() {
       <tr>
         <td>
           <div class="inventory-product-name">
-            ${product.imagePath
-              ? `<span class="inventory-product-photo"><img src="${esc(inventoryImageUrl(product))}" alt="Foto de ${esc(product.name)}" loading="lazy"></span>`
+            ${inventoryImageUrl(product)
+              ? `<span class="inventory-product-photo"><img data-inventory-product-image src="${esc(inventoryImageUrl(product))}" alt="Foto de ${esc(product.name)}" loading="lazy"></span>`
               : '<span class="inventory-product-icon" aria-hidden="true">◇</span>'}
             <strong>${esc(product.name)}</strong>
           </div>
@@ -1595,8 +1788,13 @@ function openInventoryProductDialog(productId = null) {
   $('#inventoryProductError').textContent = '';
   $('#inventoryProductDialogTitle').textContent = product ? 'Editar produto' : 'Novo produto';
   $('#inventoryProductDialogIntro').textContent = product
-    ? 'Atualize os dados ou ajuste a quantidade disponível. A mudança de estoque ficará registrada.'
-    : 'Cadastre o produto e informe a quantidade disponível no estoque.';
+    ? 'Atualize os dados ou escolha um item do catálogo para aproveitar a imagem e a categoria prontas.'
+    : 'Pesquise um item do catálogo ou cadastre um produto personalizado para a sua arena.';
+  const matchingCatalog = product
+    ? INVENTORY_PRODUCT_CATALOG.find((item) =>
+        inventoryCatalogNormalize(item.name) === inventoryCatalogNormalize(product.name))
+    : null;
+  inventoryCatalogSelectionId = matchingCatalog?.id || '';
   $('#inventoryProductName').value = product?.name || '';
   $('#inventoryProductCategory').value = product?.category || '';
   $('#inventoryProductPrice').value = product ? product.salePrice.toFixed(2) : '';
@@ -1604,7 +1802,9 @@ function openInventoryProductDialog(productId = null) {
   $('#inventoryProductStock').value = String(product?.stock ?? 0);
   $('#inventoryProductThreshold').value = String(product?.lowStockThreshold ?? 5);
   $('#inventoryProductImage').value = '';
-  renderInventoryImagePreview(product);
+  closeInventoryCatalogSuggestions();
+  syncInventoryCatalogSelectionStatus();
+  renderInventoryImagePreview(product, null, matchingCatalog);
   $('#submitInventoryProduct').textContent = product ? 'Salvar alterações' : 'Salvar produto';
   $('#inventoryProductDialog').showModal();
 }
@@ -2910,6 +3110,39 @@ if (merchandisePanel) {
 
 $('#closeInventoryProduct').onclick = () => $('#inventoryProductDialog').close();
 
+$('#inventoryProductName').addEventListener('focus', (event) => {
+  renderInventoryCatalogSuggestions(event.target.value);
+});
+
+$('#inventoryProductName').addEventListener('input', (event) => {
+  const selected = selectedInventoryCatalogProduct();
+  if (!selected || inventoryCatalogNormalize(event.target.value) !== inventoryCatalogNormalize(selected.name)) {
+    inventoryCatalogSelectionId = '';
+    syncInventoryCatalogSelectionStatus();
+    const editingProduct = inventoryEditingId
+      ? inventoryProducts.find((item) => item.id === inventoryEditingId)
+      : null;
+    if (!$('#inventoryProductImage').files?.[0]) renderInventoryImagePreview(editingProduct);
+  }
+  renderInventoryCatalogSuggestions(event.target.value);
+});
+
+$('#inventoryCatalogSuggestions').addEventListener('mousedown', (event) => {
+  if (event.target.closest('[data-inventory-catalog-id]')) event.preventDefault();
+});
+
+$('#inventoryCatalogSuggestions').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-inventory-catalog-id]');
+  if (!option) return;
+  selectInventoryCatalogProduct(option.dataset.inventoryCatalogId);
+  $('#inventoryProductPrice').focus();
+});
+
+document.addEventListener('click', (event) => {
+  const field = event.target.closest('.inventory-product-catalog-field');
+  if (!field) closeInventoryCatalogSuggestions();
+});
+
 $('#inventoryProductImage').addEventListener('change', (event) => {
   const file = event.target.files?.[0] || null;
   const product = inventoryEditingId
@@ -2917,21 +3150,21 @@ $('#inventoryProductImage').addEventListener('change', (event) => {
     : null;
 
   if (!file) {
-    renderInventoryImagePreview(product);
+    renderInventoryImagePreview(product, null, selectedInventoryCatalogProduct());
     return;
   }
 
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
     event.target.value = '';
     $('#inventoryProductError').textContent = 'Use uma imagem JPG, PNG ou WebP.';
-    renderInventoryImagePreview(product);
+    renderInventoryImagePreview(product, null, selectedInventoryCatalogProduct());
     return;
   }
 
   if (file.size > 5 * 1024 * 1024) {
     event.target.value = '';
     $('#inventoryProductError').textContent = 'A foto deve ter no máximo 5 MB.';
-    renderInventoryImagePreview(product);
+    renderInventoryImagePreview(product, null, selectedInventoryCatalogProduct());
     return;
   }
 
@@ -2941,6 +3174,8 @@ $('#inventoryProductImage').addEventListener('change', (event) => {
 
 $('#inventoryProductDialog').addEventListener('close', () => {
   clearInventoryImagePreviewObjectUrl();
+  closeInventoryCatalogSuggestions();
+  inventoryCatalogSelectionId = '';
   inventoryEditingId = null;
   $('#inventoryProductError').textContent = '';
   $('#inventoryProductImage').value = '';
@@ -2985,6 +3220,16 @@ $('#inventoryProductForm').addEventListener('submit', async (event) => {
 
     const productId = savedProductId || inventoryEditingId;
     if (!inventoryEditingId && productId) inventoryEditingId = productId;
+
+    const catalogProduct = selectedInventoryCatalogProduct();
+    if (catalogProduct && productId) {
+      const { error: catalogImageError } = await supabase
+        .from('inventory_products')
+        .update({ image_url: catalogProduct.imageUrl })
+        .eq('id', productId)
+        .eq('arena_id', arena.id);
+      if (catalogImageError) throw catalogImageError;
+    }
 
     if (imageFile && productId) {
       submit.textContent = 'Enviando foto...';
