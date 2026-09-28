@@ -2625,3 +2625,108 @@ body.admin-session .arena-visibility-note{
   }
 }
 
+/* Exclusão segura de mercadorias */
+.inventory-product-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.inventory-product-actions .primary{
+  flex:1;
+}
+.danger-outline{
+  min-height:42px;
+  border:1px solid #e1b8b4;
+  border-radius:9px;
+  padding:10px 14px;
+  background:#fff;
+  color:#a5413a;
+  font-size:12px;
+  font-weight:800;
+}
+.danger-outline:hover{
+  filter:none;
+  background:#fff4f2;
+  border-color:#d9958e;
+}
+.inventory-delete-dialog form{
+  width:min(430px,calc(100vw - 34px));
+  padding:28px;
+  text-align:center;
+}
+.inventory-delete-icon{
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  margin:0 auto 14px;
+  border-radius:50%;
+  background:#fff0ed;
+  color:#a9493f;
+  font:800 20px/1 Manrope,sans-serif;
+}
+.inventory-delete-copy h2{
+  margin:4px 0 8px;
+  color:#183c31;
+  font-size:23px;
+}
+.inventory-delete-copy>p:last-of-type{
+  margin:0;
+  color:#4f635a;
+  font-size:13px;
+  line-height:1.5;
+}
+.inventory-delete-copy small{
+  display:block;
+  margin-top:10px;
+  color:#7b8982;
+  font-size:10px;
+  line-height:1.5;
+}
+#deleteInventoryProductError{
+  min-height:18px;
+  margin:12px 0 0;
+  color:#a52b29;
+  font-size:11px;
+}
+.inventory-delete-actions{
+  display:grid;
+  grid-template-columns:1fr 1.25fr;
+  gap:9px;
+  margin-top:14px;
+}
+.inventory-delete-actions .secondary,
+.inventory-delete-actions .danger{
+  width:100%;
+  min-height:42px;
+  border-radius:9px;
+  font-size:11px;
+  font-weight:800;
+}
+.inventory-delete-actions .danger{
+  border:1px solid #9b413b;
+  background:#a9493f;
+  color:#fff;
+}
+.inventory-delete-actions .danger:hover{
+  filter:none;
+  background:#933a34;
+}
+.inventory-delete-actions button:disabled{
+  cursor:not-allowed;
+  opacity:.6;
+}
+@media(max-width:520px){
+  .inventory-product-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .inventory-product-actions .danger-outline{
+    order:2;
+  }
+  .inventory-delete-actions{
+    grid-template-columns:1fr;
+  }
+}
+
