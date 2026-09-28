@@ -55,6 +55,14 @@ let selectedId = null;
 let profitPeriod = 'day';
 let financeActivityTab = 'payments';
 let financeActivityExpanded = false;
+let inventoryProducts = [];
+let inventoryMovements = [];
+let inventoryPeriod = 'day';
+let inventorySearch = '';
+let inventoryEditingId = null;
+let inventorySaleProductId = '';
+let inventorySaleQuantity = 1;
+let inventoryLoading = false;
 let bookingsRealtimeChannel = null;
 let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
@@ -232,6 +240,12 @@ function clearArenaIdentity() {
   scheduleBlocks = [];
   cancellationHistory = [];
   pendingCancellationBookingId = null;
+  inventoryProducts = [];
+  inventoryMovements = [];
+  inventorySearch = '';
+  inventoryEditingId = null;
+  inventorySaleProductId = '';
+  inventorySaleQuantity = 1;
   selectedId = null;
   filter = 'all';
   lastPlayerBooking = null;
@@ -787,11 +801,13 @@ function syncAccessControls() {
   if (!isAdmin || !arena) adminNotifications.reset();
   const adminNav = document.querySelector('[data-view="admin"]');
   const financeNav = document.querySelector('[data-view="finance"]');
+  const inventoryNav = document.querySelector('[data-view="inventory"]');
   const masterNav = document.querySelector('[data-view="master"]');
   const playerNav = document.querySelector('[data-view="player"]');
 
   adminNav.classList.toggle('hidden', !isAdmin || !arena);
   financeNav.classList.toggle('hidden', !isAdmin || !arena);
+  inventoryNav.classList.toggle('hidden', !isAdmin || !arena);
   masterNav.classList.toggle('hidden', !isPlatformAdmin);
   playerNav.classList.toggle('hidden', isAdmin);
   $('#adminLogin').classList.toggle('hidden', isAdmin);
@@ -1062,8 +1078,453 @@ function renderProfitPanel(list) {
   };
 }
 
+
+function mapInventoryProduct(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    salePrice: Number(product.sale_price || 0),
+    costPrice: product.cost_price === null || product.cost_price === undefined ? null : Number(product.cost_price),
+    stock: Number(product.stock_quantity || 0),
+    lowStockThreshold: Number(product.low_stock_threshold || 0),
+    active: product.active !== false,
+    createdAt: product.created_at,
+    updatedAt: product.updated_at
+  };
+}
+
+function mapInventoryMovement(movement) {
+  return {
+    id: movement.id,
+    productId: movement.product_id,
+    type: movement.movement_type,
+    quantity: Number(movement.quantity || 0),
+    unitPrice: Number(movement.unit_price || 0),
+    totalAmount: Number(movement.total_amount || 0),
+    stockBefore: Number(movement.stock_before || 0),
+    stockAfter: Number(movement.stock_after || 0),
+    createdAt: movement.created_at
+  };
+}
+
+async function loadInventoryData() {
+  if (!isAdmin || !arena) return false;
+
+  const arenaId = arena.id;
+  inventoryLoading = true;
+
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 45);
+
+    const [productsResult, movementsResult] = await Promise.all([
+      supabase
+        .from('inventory_products')
+        .select('id, name, category, sale_price, cost_price, stock_quantity, low_stock_threshold, active, created_at, updated_at')
+        .eq('arena_id', arenaId)
+        .eq('active', true)
+        .order('name'),
+      supabase
+        .from('inventory_movements')
+        .select('id, product_id, movement_type, quantity, unit_price, total_amount, stock_before, stock_after, created_at')
+        .eq('arena_id', arenaId)
+        .gte('created_at', since.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1500)
+    ]);
+
+    if (productsResult.error) throw productsResult.error;
+    if (movementsResult.error) throw movementsResult.error;
+    if (arena?.id !== arenaId || !isAdmin) return false;
+
+    inventoryProducts = productsResult.data.map(mapInventoryProduct);
+    inventoryMovements = movementsResult.data.map(mapInventoryMovement);
+
+    if (!inventoryProducts.some((product) => product.id === inventorySaleProductId)) {
+      inventorySaleProductId = inventoryProducts.find((product) => product.stock > 0)?.id || inventoryProducts[0]?.id || '';
+      inventorySaleQuantity = 1;
+    }
+
+    return true;
+  } finally {
+    inventoryLoading = false;
+  }
+}
+
+function inventoryPeriodStart(period) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (period === 'week') start.setDate(start.getDate() - 6);
+  if (period === 'month') start.setDate(start.getDate() - 29);
+  return start;
+}
+
+function inventorySales(period = inventoryPeriod) {
+  const start = inventoryPeriodStart(period);
+  return inventoryMovements.filter((movement) =>
+    movement.type === 'sale' && new Date(movement.createdAt) >= start
+  );
+}
+
+function inventoryIsToday(value) {
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+}
+
+function inventoryRanking(period = inventoryPeriod) {
+  const quantities = new Map(inventoryProducts.map((product) => [product.id, 0]));
+  inventorySales(period).forEach((sale) => {
+    quantities.set(sale.productId, (quantities.get(sale.productId) || 0) + sale.quantity);
+  });
+
+  const rows = inventoryProducts.map((product) => ({
+    product,
+    quantity: quantities.get(product.id) || 0
+  }));
+
+  return {
+    top: rows.filter((row) => row.quantity > 0).sort((a, b) => b.quantity - a.quantity || a.product.name.localeCompare(b.product.name)).slice(0, 5),
+    low: rows.sort((a, b) => a.quantity - b.quantity || a.product.name.localeCompare(b.product.name)).slice(0, 5)
+  };
+}
+
+function inventoryChartSeries(period = inventoryPeriod) {
+  const sales = inventorySales(period);
+  const now = new Date();
+
+  if (period === 'day') {
+    return Array.from({ length: 12 }, (_, index) => {
+      const startHour = index * 2;
+      const value = sales.reduce((sum, sale) => {
+        const date = new Date(sale.createdAt);
+        return date.getHours() >= startHour && date.getHours() < startHour + 2
+          ? sum + sale.totalAmount : sum;
+      }, 0);
+      return { label: String(startHour).padStart(2, '0') + 'h', value };
+    });
+  }
+
+  if (period === 'week') {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(now);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const next = new Date(date);
+      next.setDate(next.getDate() + 1);
+      const value = sales.reduce((sum, sale) => {
+        const when = new Date(sale.createdAt);
+        return when >= date && when < next ? sum + sale.totalAmount : sum;
+      }, 0);
+      const label = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+      return { label, value };
+    });
+  }
+
+  return Array.from({ length: 10 }, (_, index) => {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 29 + index * 3);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 3);
+    const value = sales.reduce((sum, sale) => {
+      const when = new Date(sale.createdAt);
+      return when >= start && when < end ? sum + sale.totalAmount : sum;
+    }, 0);
+    return {
+      label: start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      value
+    };
+  });
+}
+
+function inventoryProductName(productId) {
+  return inventoryProducts.find((product) => product.id === productId)?.name || 'Produto';
+}
+
+function inventoryRowsHtml() {
+  const term = inventorySearch.trim().toLocaleLowerCase('pt-BR');
+  const products = inventoryProducts.filter((product) =>
+    !term ||
+    product.name.toLocaleLowerCase('pt-BR').includes(term) ||
+    product.category.toLocaleLowerCase('pt-BR').includes(term)
+  );
+
+  if (!products.length) {
+    return '<tr><td colspan="6"><div class="inventory-empty">' +
+      (inventoryProducts.length ? 'Nenhum produto corresponde à busca.' : 'Nenhum produto cadastrado. Clique em “Novo produto” para começar.') +
+      '</div></td></tr>';
+  }
+
+  return products.map((product) => {
+    const out = product.stock <= 0;
+    const low = !out && product.stock <= product.lowStockThreshold;
+    const statusClass = out ? 'out' : low ? 'low' : '';
+    const statusLabel = out ? 'Sem estoque' : low ? 'Estoque baixo' : 'Em estoque';
+
+    return `
+      <tr>
+        <td>
+          <div class="inventory-product-name">
+            <span class="inventory-product-icon" aria-hidden="true">▣</span>
+            <strong>${esc(product.name)}</strong>
+          </div>
+        </td>
+        <td>${esc(product.category)}</td>
+        <td><span class="inventory-stock-value">${product.stock}</span></td>
+        <td>${money(product.salePrice)}</td>
+        <td><span class="inventory-status ${statusClass}">${statusLabel}</span></td>
+        <td>
+          <div class="inventory-row-actions">
+            <button type="button" data-inventory-sale-product="${product.id}" ${out ? 'disabled' : ''}>▣ Registrar venda</button>
+            <button type="button" class="inventory-edit" data-inventory-edit="${product.id}" aria-label="Editar ${esc(product.name)}">✎</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function inventoryRankingHtml(rows, emptyText) {
+  if (!rows.length) return `<div class="inventory-alert-empty">${emptyText}</div>`;
+  const max = Math.max(...rows.map((row) => row.quantity), 1);
+
+  return `<div class="inventory-ranking">${rows.map((row, index) => `
+    <div class="inventory-ranking-row">
+      <span>${index + 1}</span>
+      <strong title="${esc(row.product.name)}">${esc(row.product.name)}</strong>
+      <div class="inventory-ranking-track"><i style="width:${Math.max(row.quantity ? 8 : 0, row.quantity / max * 100)}%"></i></div>
+      <small>${row.quantity}</small>
+    </div>`).join('')}</div>`;
+}
+
+function renderMerchandisePanel() {
+  const panel = $('#merchandisePanel');
+  if (!panel) return;
+
+  if (inventoryLoading) {
+    panel.innerHTML = '<div class="inventory-card"><div class="inventory-empty">Carregando estoque e vendas...</div></div>';
+    return;
+  }
+
+  const productsCount = inventoryProducts.length;
+  const stockTotal = inventoryProducts.reduce((sum, product) => sum + product.stock, 0);
+  const lowStock = inventoryProducts.filter((product) => product.stock <= product.lowStockThreshold);
+  const todaySales = inventoryMovements.filter((movement) => movement.type === 'sale' && inventoryIsToday(movement.createdAt));
+  const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+  const todayUnits = todaySales.reduce((sum, sale) => sum + sale.quantity, 0);
+
+  const periodSales = inventorySales();
+  const periodRevenue = periodSales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+  const periodUnits = periodSales.reduce((sum, sale) => sum + sale.quantity, 0);
+  const periodLabel = { day: 'Hoje', week: '7 dias', month: '30 dias' }[inventoryPeriod];
+
+  const ranking = inventoryRanking();
+  const chart = inventoryChartSeries();
+  const chartMax = Math.max(...chart.map((item) => item.value), 1);
+
+  if (!inventoryProducts.some((product) => product.id === inventorySaleProductId)) {
+    inventorySaleProductId = inventoryProducts.find((product) => product.stock > 0)?.id || inventoryProducts[0]?.id || '';
+    inventorySaleQuantity = 1;
+  }
+
+  const saleProduct = inventoryProducts.find((product) => product.id === inventorySaleProductId) || null;
+  const safeQuantity = saleProduct ? Math.max(1, Math.min(inventorySaleQuantity, Math.max(saleProduct.stock, 1))) : 1;
+  inventorySaleQuantity = safeQuantity;
+  const saleTotal = saleProduct ? saleProduct.salePrice * safeQuantity : 0;
+
+  const recentMovements = inventoryMovements.slice(0, 6);
+  const movementRows = recentMovements.length
+    ? recentMovements.map((movement) => {
+      const isIncrease = movement.stockAfter > movement.stockBefore;
+      const label = movement.type === 'sale' ? 'Venda' : movement.type === 'restock' ? 'Reposição' : 'Ajuste';
+      const sign = isIncrease ? '+' : '−';
+      const date = new Date(movement.createdAt);
+      return `
+        <div class="inventory-movement-row">
+          <span class="inventory-movement-icon ${isIncrease ? '' : 'down'}">${isIncrease ? '↑' : '↓'}</span>
+          <div class="inventory-movement-copy">
+            <strong>${label} · ${esc(inventoryProductName(movement.productId))}</strong>
+            <small>${sign}${movement.quantity} un · estoque ${movement.stockAfter}</small>
+          </div>
+          <span class="inventory-movement-time">${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>`;
+    }).join('')
+    : '<div class="inventory-empty">Nenhuma movimentação registrada.</div>';
+
+  panel.innerHTML = `
+    <section class="inventory-summary" aria-label="Resumo do estoque">
+      <article class="inventory-summary-card">
+        <span class="inventory-summary-icon" aria-hidden="true">◇</span>
+        <div class="inventory-summary-copy"><span>Produtos cadastrados</span><strong>${productsCount}</strong><small>itens no catálogo</small></div>
+      </article>
+      <article class="inventory-summary-card">
+        <span class="inventory-summary-icon" aria-hidden="true">▣</span>
+        <div class="inventory-summary-copy"><span>Estoque total</span><strong>${stockTotal}</strong><small>unidades disponíveis</small></div>
+      </article>
+      <article class="inventory-summary-card">
+        <span class="inventory-summary-icon" aria-hidden="true">R$</span>
+        <div class="inventory-summary-copy"><span>Vendas hoje</span><strong>${money(todayRevenue)}</strong><small>${todayUnits} unidade${todayUnits === 1 ? '' : 's'} vendida${todayUnits === 1 ? '' : 's'}</small></div>
+      </article>
+      <article class="inventory-summary-card ${lowStock.length ? 'warning' : ''}">
+        <span class="inventory-summary-icon" aria-hidden="true">!</span>
+        <div class="inventory-summary-copy"><span>Estoque baixo</span><strong>${lowStock.length}</strong><small>produto${lowStock.length === 1 ? '' : 's'} para repor</small></div>
+      </article>
+    </section>
+
+    <section class="inventory-main-grid">
+      <article class="inventory-card">
+        <div class="inventory-card-head">
+          <div class="inventory-card-title">
+            <span aria-hidden="true">◇</span>
+            <div><h2>Produtos em estoque</h2><p>Cadastre produtos, acompanhe quantidades e registre saídas.</p></div>
+          </div>
+          <div class="inventory-toolbar">
+            <div class="inventory-search"><span aria-hidden="true">⌕</span><input id="inventorySearch" type="search" value="${esc(inventorySearch)}" placeholder="Buscar produto..." aria-label="Buscar produto"></div>
+            <button type="button" class="inventory-new-button" data-inventory-new>＋ Novo produto</button>
+          </div>
+        </div>
+        <div class="inventory-table-wrap">
+          <table class="inventory-table">
+            <thead><tr><th>Produto</th><th>Categoria</th><th>Estoque</th><th>Preço unitário</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead>
+            <tbody id="inventoryTableBody">${inventoryRowsHtml()}</tbody>
+          </table>
+        </div>
+      </article>
+
+      <div class="inventory-side">
+        <article class="inventory-card inventory-sale-card">
+          <div class="inventory-card-title">
+            <span aria-hidden="true">▣</span>
+            <div><h2>Registrar venda</h2><p>Selecione o produto e dê baixa automaticamente no estoque.</p></div>
+          </div>
+          <form id="inventorySaleForm">
+            <label>Produto
+              <select id="inventorySaleProduct" ${inventoryProducts.length ? '' : 'disabled'}>
+                ${inventoryProducts.length
+                  ? inventoryProducts.map((product) => `<option value="${product.id}" ${product.id === inventorySaleProductId ? 'selected' : ''}>${esc(product.name)} · ${product.stock} un</option>`).join('')
+                  : '<option value="">Nenhum produto cadastrado</option>'}
+              </select>
+            </label>
+            <div class="inventory-sale-grid">
+              <label>Quantidade
+                <div class="inventory-quantity-control">
+                  <button type="button" data-inventory-qty="-1" aria-label="Diminuir quantidade">−</button>
+                  <input id="inventorySaleQuantity" type="number" min="1" max="${saleProduct?.stock || 1}" value="${safeQuantity}" ${saleProduct ? '' : 'disabled'}>
+                  <button type="button" data-inventory-qty="1" aria-label="Aumentar quantidade">＋</button>
+                </div>
+              </label>
+              <label>Preço unitário
+                <span class="inventory-price-readonly" id="inventorySaleUnitPrice">${saleProduct ? money(saleProduct.salePrice) : money(0)}</span>
+              </label>
+            </div>
+            <div class="inventory-sale-total"><span>Total da venda</span><strong id="inventorySaleTotal">${money(saleTotal)}</strong></div>
+            <button class="inventory-sale-submit" id="inventorySaleSubmit" type="submit" ${!saleProduct || saleProduct.stock <= 0 ? 'disabled' : ''}>▣ Dar baixa no estoque</button>
+            <p class="inventory-sale-hint" id="inventorySaleHint">${saleProduct ? `Estoque disponível: ${saleProduct.stock} unidade${saleProduct.stock === 1 ? '' : 's'}.` : 'Cadastre um produto para registrar vendas.'}</p>
+          </form>
+        </article>
+
+        <article class="inventory-card inventory-movements">
+          <div class="inventory-card-head">
+            <div class="inventory-card-title">
+              <span aria-hidden="true">◷</span>
+              <div><h2>Últimas movimentações</h2><p>Vendas, reposições e ajustes recentes.</p></div>
+            </div>
+          </div>
+          <div class="inventory-movement-list">${movementRows}</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="inventory-dashboard" aria-label="Desempenho do mercadinho">
+      <article class="inventory-dashboard-card">
+        <div class="inventory-dashboard-head">
+          <div><h3>Faturamento do mercadinho</h3><p>Acompanhe o desempenho das vendas.</p></div>
+          <div class="inventory-period-tabs" role="tablist" aria-label="Período do dashboard">
+            ${['day','week','month'].map((period) => `<button type="button" role="tab" aria-selected="${inventoryPeriod === period}" class="${inventoryPeriod === period ? 'active' : ''}" data-inventory-period="${period}">${{day:'Hoje',week:'Semana',month:'Mês'}[period]}</button>`).join('')}
+          </div>
+        </div>
+        <div class="inventory-revenue"><strong>${money(periodRevenue)}</strong><small>${periodUnits} unidade${periodUnits === 1 ? '' : 's'} · ${periodLabel}</small></div>
+        <div class="inventory-chart">
+          ${chart.map((item) => `<div class="inventory-chart-bar-wrap" title="${esc(item.label)} · ${money(item.value)}"><i class="inventory-chart-bar" style="height:${Math.max(item.value ? 5 : 0, item.value / chartMax * 100)}%"></i><span>${esc(item.label)}</span></div>`).join('')}
+        </div>
+        <div class="inventory-chart-labels-space" aria-hidden="true"></div>
+      </article>
+
+      <article class="inventory-dashboard-card">
+        <div class="inventory-dashboard-head"><div><h3>Produtos mais vendidos</h3><p>Ranking por quantidade · ${periodLabel.toLowerCase()}</p></div></div>
+        ${inventoryRankingHtml(ranking.top, 'Nenhuma venda registrada neste período.')}
+      </article>
+
+      <article class="inventory-dashboard-card">
+        <div class="inventory-dashboard-head"><div><h3>Produtos com menor saída</h3><p>Itens com menor giro · ${periodLabel.toLowerCase()}</p></div></div>
+        ${inventoryRankingHtml(ranking.low, 'Cadastre produtos para acompanhar o giro.')}
+      </article>
+
+      <article class="inventory-dashboard-card">
+        <div class="inventory-dashboard-head"><div><h3>Alertas de estoque baixo</h3><p>Produtos que precisam de reposição.</p></div></div>
+        ${lowStock.length ? `<div class="inventory-alert-list">${lowStock.slice().sort((a,b)=>a.stock-b.stock).slice(0,6).map((product) => `
+          <div class="inventory-alert-row"><span>⚠ ${esc(product.name)}</span><strong>${product.stock} un</strong></div>`).join('')}</div>` : '<div class="inventory-alert-empty">Estoque em dia. Nenhum alerta agora.</div>'}
+      </article>
+    </section>`;
+
+  updateInventorySalePreview();
+}
+
+function updateInventorySalePreview() {
+  const product = inventoryProducts.find((item) => item.id === inventorySaleProductId);
+  const quantityInput = $('#inventorySaleQuantity');
+  const unitPrice = $('#inventorySaleUnitPrice');
+  const total = $('#inventorySaleTotal');
+  const submit = $('#inventorySaleSubmit');
+  const hint = $('#inventorySaleHint');
+  if (!quantityInput || !unitPrice || !total || !submit || !hint) return;
+
+  if (!product) {
+    submit.disabled = true;
+    total.textContent = money(0);
+    unitPrice.textContent = money(0);
+    hint.textContent = 'Cadastre um produto para registrar vendas.';
+    return;
+  }
+
+  inventorySaleQuantity = Math.max(1, Math.min(Number(inventorySaleQuantity || 1), Math.max(product.stock, 1)));
+  quantityInput.value = String(inventorySaleQuantity);
+  quantityInput.max = String(Math.max(product.stock, 1));
+  unitPrice.textContent = money(product.salePrice);
+  total.textContent = money(product.salePrice * inventorySaleQuantity);
+  submit.disabled = product.stock <= 0 || inventorySaleQuantity > product.stock;
+  hint.textContent = product.stock > 0
+    ? `Estoque disponível: ${product.stock} unidade${product.stock === 1 ? '' : 's'}.`
+    : 'Este produto está sem estoque. Atualize a quantidade antes de registrar uma venda.';
+}
+
+function openInventoryProductDialog(productId = null) {
+  if (!isAdmin || !arena) return;
+  const product = productId ? inventoryProducts.find((item) => item.id === productId) : null;
+  inventoryEditingId = product?.id || null;
+
+  $('#inventoryProductForm').reset();
+  $('#inventoryProductError').textContent = '';
+  $('#inventoryProductDialogTitle').textContent = product ? 'Editar produto' : 'Novo produto';
+  $('#inventoryProductDialogIntro').textContent = product
+    ? 'Atualize os dados ou ajuste a quantidade disponível. A mudança de estoque ficará registrada.'
+    : 'Cadastre o produto e informe a quantidade disponível no estoque.';
+  $('#inventoryProductName').value = product?.name || '';
+  $('#inventoryProductCategory').value = product?.category || '';
+  $('#inventoryProductPrice').value = product ? product.salePrice.toFixed(2) : '';
+  $('#inventoryProductCost').value = product?.costPrice === null || product?.costPrice === undefined ? '' : product.costPrice.toFixed(2);
+  $('#inventoryProductStock').value = String(product?.stock ?? 0);
+  $('#inventoryProductThreshold').value = String(product?.lowStockThreshold ?? 5);
+  $('#submitInventoryProduct').textContent = product ? 'Salvar alterações' : 'Salvar produto';
+  $('#inventoryProductDialog').showModal();
+}
+
+
 async function setView(nextView) {
-  if (!['admin', 'finance', 'master', 'player'].includes(nextView)) return;
+  if (!['admin', 'finance', 'inventory', 'master', 'player'].includes(nextView)) return;
 
   if (nextView === 'master') {
     if (!isPlatformAdmin) return;
@@ -1080,7 +1541,23 @@ async function setView(nextView) {
 
   if (nextView !== 'player' && !isAdmin) return;
   if (nextView === 'player' && isAdmin) return;
-  if ((nextView === 'admin' || nextView === 'finance') && !arena) return;
+  if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory') && !arena) return;
+
+  if (nextView === 'inventory') {
+    view = 'inventory';
+    inventoryLoading = true;
+    render();
+    try {
+      await loadInventoryData();
+    } catch (error) {
+      console.error(error);
+      toast('Não foi possível carregar as mercadorias. Tente novamente.');
+    } finally {
+      inventoryLoading = false;
+      render();
+    }
+    return;
+  }
 
   view = nextView;
   render();
@@ -1125,9 +1602,12 @@ function render() {
   if ($('#weekdayLabel')) $('#weekdayLabel').textContent = weekdayLabel(day);
 
   const masterMode = view === 'master' && isPlatformAdmin;
+  const inventoryMode = view === 'inventory' && isAdmin && Boolean(arena);
   const masterPanel = $('#masterPanel');
+  const merchandisePanel = $('#merchandisePanel');
   const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
+  if (merchandisePanel) merchandisePanel.classList.toggle('hidden', !inventoryMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
 
   if (masterMode) {
@@ -1156,6 +1636,30 @@ function render() {
 
   if (masterPanel) masterPanel.classList.add('hidden');
 
+  if (inventoryMode) {
+    document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'inventory'));
+    $('#crumb').textContent = 'Mercadorias';
+    $('#eyebrow').textContent = 'CONTROLE DA ARENA';
+    $('#title').textContent = 'Mercadorias da arena';
+    $('#subtitle').textContent = 'Controle o estoque, registre vendas e acompanhe o desempenho do mercadinho.';
+    $('#newBooking').classList.add('hidden');
+    $('#blockSchedule').classList.add('hidden');
+    $('#stats').classList.add('hidden');
+    document.querySelector('.workspace').classList.add('hidden');
+    $('#blockPanel').classList.add('hidden');
+    $('#bottom').hidden = true;
+    $('#bottom').style.display = 'none';
+
+    const profitPanel = $('#profitPanel');
+    if (profitPanel) {
+      profitPanel.style.display = 'none';
+      profitPanel.innerHTML = '';
+    }
+
+    renderMerchandisePanel();
+    return;
+  }
+
   if (!arena) {
     view = 'player';
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'player'));
@@ -1177,6 +1681,8 @@ function render() {
     $('#bottom').style.display = 'none';
     $('#blockPanel').classList.add('hidden');
     if (partnerSpotlight) partnerSpotlight.classList.remove('hidden');
+    const merchandisePanel = $('#merchandisePanel');
+    if (merchandisePanel) merchandisePanel.classList.add('hidden');
 
     const profitPanel = $('#profitPanel');
     if (profitPanel) {
@@ -2214,6 +2720,162 @@ document.querySelectorAll('[data-view]').forEach((button) => {
     setView(button.dataset.view);
   };
 });
+
+const merchandisePanel = $('#merchandisePanel');
+if (merchandisePanel) {
+  merchandisePanel.addEventListener('input', (event) => {
+    if (event.target.id === 'inventorySearch') {
+      inventorySearch = event.target.value;
+      const body = $('#inventoryTableBody');
+      if (body) body.innerHTML = inventoryRowsHtml();
+      return;
+    }
+
+    if (event.target.id === 'inventorySaleQuantity') {
+      inventorySaleQuantity = Number(event.target.value || 1);
+      updateInventorySalePreview();
+    }
+  });
+
+  merchandisePanel.addEventListener('change', (event) => {
+    if (event.target.id === 'inventorySaleProduct') {
+      inventorySaleProductId = event.target.value;
+      inventorySaleQuantity = 1;
+      updateInventorySalePreview();
+    }
+  });
+
+  merchandisePanel.addEventListener('click', (event) => {
+    const newButton = event.target.closest('[data-inventory-new]');
+    if (newButton) {
+      openInventoryProductDialog();
+      return;
+    }
+
+    const editButton = event.target.closest('[data-inventory-edit]');
+    if (editButton) {
+      openInventoryProductDialog(editButton.dataset.inventoryEdit);
+      return;
+    }
+
+    const saleButton = event.target.closest('[data-inventory-sale-product]');
+    if (saleButton && !saleButton.disabled) {
+      inventorySaleProductId = saleButton.dataset.inventorySaleProduct;
+      inventorySaleQuantity = 1;
+      renderMerchandisePanel();
+      $('#inventorySaleProduct')?.focus();
+      return;
+    }
+
+    const periodButton = event.target.closest('[data-inventory-period]');
+    if (periodButton) {
+      inventoryPeriod = periodButton.dataset.inventoryPeriod;
+      renderMerchandisePanel();
+      return;
+    }
+
+    const quantityButton = event.target.closest('[data-inventory-qty]');
+    if (quantityButton) {
+      const product = inventoryProducts.find((item) => item.id === inventorySaleProductId);
+      if (!product) return;
+      inventorySaleQuantity = Math.max(1, Math.min(
+        inventorySaleQuantity + Number(quantityButton.dataset.inventoryQty),
+        Math.max(product.stock, 1)
+      ));
+      updateInventorySalePreview();
+    }
+  });
+
+  merchandisePanel.addEventListener('submit', async (event) => {
+    if (event.target.id !== 'inventorySaleForm') return;
+    event.preventDefault();
+    if (!isAdmin || view !== 'inventory' || !arena) return;
+
+    const product = inventoryProducts.find((item) => item.id === inventorySaleProductId);
+    if (!product) {
+      toast('Selecione um produto.');
+      return;
+    }
+
+    const quantity = Math.max(1, Math.floor(Number(inventorySaleQuantity || 1)));
+    const submit = $('#inventorySaleSubmit');
+    submit.disabled = true;
+    submit.textContent = 'Registrando venda...';
+
+    try {
+      const { error } = await supabase.rpc('register_inventory_sale', {
+        target_product_id: product.id,
+        target_quantity: quantity
+      });
+      if (error) throw error;
+
+      await loadInventoryData();
+      render();
+      toast(`Venda registrada · ${quantity} ${quantity === 1 ? 'unidade' : 'unidades'} de ${product.name}.`);
+    } catch (error) {
+      console.error(error);
+      toast(error.message || 'Não foi possível registrar a venda.');
+      submit.disabled = false;
+      submit.textContent = '▣ Dar baixa no estoque';
+    }
+  });
+}
+
+$('#closeInventoryProduct').onclick = () => $('#inventoryProductDialog').close();
+$('#inventoryProductDialog').addEventListener('close', () => {
+  inventoryEditingId = null;
+  $('#inventoryProductError').textContent = '';
+});
+
+$('#inventoryProductForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isAdmin || !arena) return;
+
+  const submit = $('#submitInventoryProduct');
+  const salePrice = Number($('#inventoryProductPrice').value);
+  const costRaw = $('#inventoryProductCost').value.trim();
+  const costPrice = costRaw === '' ? null : Number(costRaw);
+  const stock = Math.floor(Number($('#inventoryProductStock').value));
+  const threshold = Math.floor(Number($('#inventoryProductThreshold').value));
+
+  $('#inventoryProductError').textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Salvando...';
+
+  try {
+    if (!Number.isFinite(salePrice) || salePrice < 0) throw new Error('Informe um preço de venda válido.');
+    if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) throw new Error('Informe um custo válido.');
+    if (!Number.isInteger(stock) || stock < 0) throw new Error('Informe uma quantidade de estoque válida.');
+    if (!Number.isInteger(threshold) || threshold < 0) throw new Error('Informe um limite de estoque baixo válido.');
+
+    const { error } = await supabase.rpc('save_inventory_product', {
+      target_arena_id: arena.id,
+      target_name: $('#inventoryProductName').value.trim(),
+      target_category: $('#inventoryProductCategory').value.trim(),
+      target_sale_price: salePrice,
+      target_cost_price: costPrice,
+      target_stock_quantity: stock,
+      target_low_stock_threshold: threshold,
+      target_product_id: inventoryEditingId
+    });
+
+    if (error) throw error;
+
+    const edited = Boolean(inventoryEditingId);
+    $('#inventoryProductDialog').close();
+    await loadInventoryData();
+    render();
+    toast(edited ? 'Produto atualizado com sucesso.' : 'Produto cadastrado com sucesso.');
+  } catch (error) {
+    console.error(error);
+    $('#inventoryProductError').textContent = error.message || 'Não foi possível salvar o produto.';
+  } finally {
+    submit.disabled = false;
+    submit.textContent = inventoryEditingId ? 'Salvar alterações' : 'Salvar produto';
+  }
+});
+
+
 $('#schedule').addEventListener('click', (event) => {
   const button = event.target.closest('[data-court]');
   if (!button) return;
