@@ -410,6 +410,18 @@
 <button type="button" id="closeInventoryProduct" class="close" aria-label="Fechar">×</button>
 </div>
 <p class="login-intro" id="inventoryProductDialogIntro">Cadastre o produto e informe a quantidade disponível no estoque.</p>
+<label class="inventory-image-field">Foto do produto <span class="inventory-optional">(opcional)</span>
+  <div class="inventory-image-upload">
+    <div class="inventory-image-preview" id="inventoryImagePreview">
+      <span aria-hidden="true">◇</span>
+      <small>Sem foto</small>
+    </div>
+    <div class="inventory-image-upload-copy">
+      <input id="inventoryProductImage" type="file" accept="image/jpeg,image/png,image/webp">
+      <small>JPG, PNG ou WebP · até 5 MB. A imagem aparece ao lado do produto no estoque.</small>
+    </div>
+  </div>
+</label>
 <div class="inventory-form-grid">
 <label>Nome do produto
 <input id="inventoryProductName" type="text" required minlength="2" maxlength="100" placeholder="Ex.: Água mineral">
