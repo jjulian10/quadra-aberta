@@ -1978,3 +1978,11 @@ alter table public.inventory_products
   add column if not exists image_url text
   check (image_url is null or char_length(image_url) <= 1000);
 
+-- Exclusão lógica de mercadorias preservando o histórico
+alter table public.inventory_products
+  drop constraint if exists inventory_products_arena_id_name_key;
+
+create unique index if not exists inventory_products_active_name_unique
+  on public.inventory_products (arena_id, lower(name))
+  where active = true;
+
