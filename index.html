@@ -108,6 +108,7 @@
 <nav>
 <button data-view="admin" class="nav hidden">▦ &nbsp; Agenda e reservas</button>
 <button data-view="finance" class="nav hidden">📊 &nbsp; Financeiro</button>
+<button data-view="inventory" class="nav hidden">▣ &nbsp; Mercadorias</button>
 <button data-view="master" id="masterNav" class="nav hidden">◆ &nbsp; Painel Mestre</button>
 <button data-view="player" class="nav">◷ &nbsp; Visão do jogador</button>
 </nav>
@@ -187,6 +188,7 @@
     <div id="masterArenaList"></div>
   </div>
 </section>
+<section class="merchandise-panel hidden" id="merchandisePanel" aria-label="Gestão de mercadorias"></section>
 <section class="partner-spotlight hidden" id="partnerSpotlight" aria-labelledby="partnerSpotlightTitle">
   <div class="partner-copy">
     <p class="partner-kicker">PARCERIA QUADRA ABERTA</p>
@@ -396,6 +398,45 @@
 
 <p id="newArenaError" role="alert"></p>
 <div class="dialog-actions"><button class="primary" id="submitNewArena" type="submit">Criar arena</button></div>
+</form>
+</dialog>
+<dialog id="inventoryProductDialog" class="inventory-dialog">
+<form id="inventoryProductForm">
+<div class="dialog-heading">
+<div>
+<p class="eyebrow">MERCADORIAS</p>
+<h2 id="inventoryProductDialogTitle">Novo produto</h2>
+</div>
+<button type="button" id="closeInventoryProduct" class="close" aria-label="Fechar">×</button>
+</div>
+<p class="login-intro" id="inventoryProductDialogIntro">Cadastre o produto e informe a quantidade disponível no estoque.</p>
+<div class="inventory-form-grid">
+<label>Nome do produto
+<input id="inventoryProductName" type="text" required minlength="2" maxlength="100" placeholder="Ex.: Água mineral">
+</label>
+<label>Categoria
+<input id="inventoryProductCategory" type="text" required minlength="2" maxlength="60" placeholder="Ex.: Bebidas">
+</label>
+</div>
+<div class="inventory-form-grid">
+<label>Preço de venda
+<input id="inventoryProductPrice" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="0,00">
+</label>
+<label>Custo por unidade <span class="inventory-optional">(opcional)</span>
+<input id="inventoryProductCost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00">
+</label>
+</div>
+<div class="inventory-form-grid">
+<label>Quantidade em estoque
+<input id="inventoryProductStock" type="number" required min="0" step="1" inputmode="numeric" value="0">
+</label>
+<label>Alerta de estoque baixo
+<input id="inventoryProductThreshold" type="number" required min="0" step="1" inputmode="numeric" value="5">
+</label>
+</div>
+<p class="form-note">Ao alterar a quantidade de um produto já cadastrado, o ajuste fica registrado no histórico de movimentações.</p>
+<p id="inventoryProductError" role="alert"></p>
+<div class="dialog-actions"><button class="primary" id="submitInventoryProduct" type="submit">Salvar produto</button></div>
 </form>
 </dialog>
 <dialog id="loginDialog">
