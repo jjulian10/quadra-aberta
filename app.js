@@ -934,6 +934,66 @@ function arenaSuspensionMessage(access) {
     ? 'Acesso temporariamente suspenso. Motivo: ' + reason + '. Entre em contato com o suporte do Quadra Aberta para regularizar sua arena.'
     : 'Acesso temporariamente suspenso. Entre em contato com o suporte do Quadra Aberta para regularizar sua arena.';
 }
+
+function quadraSupportWhatsappUrl(arenaName = '') {
+  let digits = String(ARENA_SUPPORT_WHATSAPP || '').replace(/\D/g, '');
+  if (digits && digits.length <= 11) digits = '55' + digits;
+  const context = String(arenaName || '').trim();
+  const message = context
+    ? `Olá! Sou administrador da ${context} e meu acesso ao Quadra Aberta está suspenso. Gostaria de regularizar a situação.`
+    : 'Olá! Meu acesso administrativo ao Quadra Aberta está suspenso. Gostaria de regularizar a situação.';
+  return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : '#';
+}
+
+function renderLoginError(message = '', options = {}) {
+  const element = $('#loginError');
+  if (!element) return;
+
+  const text = String(message || '').trim();
+  const isSuspension = options.type === 'suspended';
+
+  element.classList.toggle('has-suspension', isSuspension);
+  if (!text) {
+    element.innerHTML = '';
+    return;
+  }
+
+  if (!isSuspension) {
+    element.innerHTML = `<span class="login-error-text">${esc(text)}</span>`;
+    return;
+  }
+
+  const reason = String(options.reason || '').trim() || 'Regularização pendente';
+  const arenaName = String(options.arenaName || '').trim();
+  const supportUrl = quadraSupportWhatsappUrl(arenaName);
+
+  element.innerHTML = `
+    <section class="login-suspension-card" aria-label="Acesso temporariamente suspenso">
+      <div class="login-suspension-icon" aria-hidden="true">
+        <span class="login-suspension-icon-ring"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="10.5" width="14" height="10" rx="2.4"></rect>
+          <path d="M8.25 10.5V7.8a3.75 3.75 0 0 1 7.5 0v2.7"></path>
+          <path d="M12 14.1v2.8"></path>
+        </svg>
+      </div>
+      <div class="login-suspension-body">
+        <span class="login-suspension-kicker">ACESSO RESTRITO</span>
+        <strong class="login-suspension-title">Acesso temporariamente suspenso</strong>
+        <p><b>Motivo:</b> ${esc(reason)}. Entre em contato com o suporte do Quadra Aberta para regularizar sua arena.</p>
+        <a class="login-support-button" href="${esc(supportUrl)}" target="_blank" rel="noopener noreferrer">
+          <span class="login-support-whatsapp" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3 20l1.2-4.7A8.5 8.5 0 1 1 20.5 11.5Z"></path>
+              <path d="M8.8 8.7c.3-.5.6-.5.9-.5h.5c.2 0 .4.1.5.4l.7 1.7c.1.3.1.5-.1.7l-.5.6c-.2.2-.2.4-.1.6.5.9 1.2 1.7 2 2.3.2.1.4.1.6 0l.7-.5c.2-.2.5-.2.7-.1l1.7.8c.3.1.4.3.4.6 0 .4-.1.9-.4 1.3-.4.6-1.2.9-2 .8-1.2-.1-2.8-.8-4.4-2.3-1.8-1.7-2.7-3.5-2.8-4.7-.1-.6.1-1.2.4-1.7Z"></path>
+            </svg>
+          </span>
+          <span>Falar com suporte</span>
+          <span class="login-support-arrow" aria-hidden="true">›</span>
+        </a>
+      </div>
+    </section>`;
+}
 async function enterAdminPanelForUser(userId) {
   currentAdminUserId = userId;
   isPlatformAdmin = await checkPlatformAdmin(userId);
@@ -954,7 +1014,11 @@ async function enterAdminPanelForUser(userId) {
       return true;
     }
     await supabase.auth.signOut();
-    throw new Error(message);
+    const suspensionError = new Error(message);
+    suspensionError.code = 'ARENA_SUSPENDED';
+    suspensionError.suspensionReason = linkedArena.suspension_reason || '';
+    suspensionError.arenaName = linkedArena.name || '';
+    throw suspensionError;
   }
 
   if (!linkedArena) {
@@ -3790,7 +3854,7 @@ async function moveDay(amount) {
 $('#prevDay').onclick = () => moveDay(-1);
 $('#nextDay').onclick = () => moveDay(1);
 $('#adminLogin').onclick = () => {
-  $('#loginError').textContent = '';
+  renderLoginError('');
   $('#loginForm').reset();
   $('#loginDialog').showModal();
 };
@@ -3799,10 +3863,10 @@ $('#closeLogin').onclick = () => $('#loginDialog').close();
 
 $('#forgotPassword').onclick = async () => {
   const email = $('#adminEmail').value.trim().toLowerCase();
-  $('#loginError').textContent = '';
+  renderLoginError('');
 
   if (!email) {
-    $('#loginError').textContent = 'Informe seu e-mail para recuperar a senha.';
+    renderLoginError('Informe seu e-mail para recuperar a senha.');
     return;
   }
 
@@ -3815,7 +3879,7 @@ $('#forgotPassword').onclick = async () => {
     toast('Enviamos um link para você criar uma nova senha.');
   } catch (error) {
     console.error(error);
-    $('#loginError').textContent = error.message || 'Não foi possível enviar o link de recuperação.';
+    renderLoginError(error.message || 'Não foi possível enviar o link de recuperação.');
   }
 };
 
@@ -3824,7 +3888,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
   const email = $('#adminEmail').value.trim().toLowerCase();
   const password = $('#adminPassword').value;
 
-  $('#loginError').textContent = '';
+  renderLoginError('');
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -3845,7 +3909,15 @@ $('#loginForm').addEventListener('submit', async (event) => {
     toast(view === 'master' ? 'Painel Mestre iniciado.' : `Acesso administrativo da ${arena.name} iniciado.`);
   } catch (error) {
     console.error(error);
-    $('#loginError').textContent = error.message || 'E-mail ou senha inválidos.';
+    if (error?.code === 'ARENA_SUSPENDED') {
+      renderLoginError(error.message, {
+        type: 'suspended',
+        reason: error.suspensionReason,
+        arenaName: error.arenaName
+      });
+    } else {
+      renderLoginError(error.message || 'E-mail ou senha inválidos.');
+    }
   }
 });
 
