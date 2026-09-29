@@ -54,6 +54,7 @@ let masterLoading = false;
 let masterDetail = null;
 let masterTab = 'data';
 let masterCourtEditId = null;
+let masterStatusArenaId = '';
 let arenaSettingsDetail = null;
 let settingsTab = 'data';
 let settingsCourtId = null;
@@ -544,7 +545,7 @@ async function verifyCurrentPublicArena() {
   const { data, error } = await supabase.from('arenas').select('id').eq('slug', slug).eq('active', true).maybeSingle();
   if (error || data || isAdmin || arena?.slug !== slug) return;
   const { data: status } = await supabase.rpc('get_public_arena_status', { target_slug: slug });
-  unavailableArenaStatus = status === 'private' ? 'private' : '';
+  unavailableArenaStatus = ['private', 'suspended'].includes(status) ? status : '';
   activeArenaSlug = '';
   ++arenaChangeVersion;
   clearArenaIdentity();
@@ -679,7 +680,7 @@ function renderMasterPanel() {
       <div class="master-arena-main">
         <div class="master-arena-title">
           <strong>${esc(item.name)}</strong>
-          <span class="master-status ${item.active ? 'active' : 'inactive'}">${item.active ? 'Ativa' : 'Inativa'}</span>
+          <span class="master-status ${item.active ? 'active' : 'inactive'}">${item.active ? 'Ativa' : 'Suspensa'}</span>
         </div>
         <small>${esc(item.city || 'Porto Velho, RO')}</small>
         <span>${Number(item.court_count || 0)} quadra${Number(item.court_count || 0) === 1 ? '' : 's'} · ${Number(item.bookings_count || 0)} reserva${Number(item.bookings_count || 0) === 1 ? '' : 's'}</span>
@@ -693,12 +694,44 @@ function renderMasterPanel() {
         <small>Recebido</small>
         <strong>${money(Number(item.received || 0))}</strong>
       </div>
+      <div class="master-arena-access">
+        <div>
+          <small>Acesso</small>
+          <strong>${item.active ? 'Liberado' : 'Suspenso'}</strong>
+          <span>${item.active ? 'Admin + agenda pública' : 'Admin e agenda bloqueados'}</span>
+        </div>
+        <button type="button" class="master-access-switch ${item.active ? 'is-active' : 'is-suspended'}" data-master-toggle-arena="${esc(item.arena_id)}" aria-pressed="${item.active}" aria-label="${item.active ? 'Suspender' : 'Reativar'} ${esc(item.name)}">
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
     </article>
   `).join('');
 }
 
 const masterLink = (slug) => `${window.location.origin}/?arena=${encodeURIComponent(slug)}`;
 
+function openMasterArenaStatusDialog(id) {
+  if (!isPlatformAdmin) return;
+  const item = masterArenas.find((candidate) => candidate.arena_id === id);
+  if (!item) return;
+
+  masterStatusArenaId = id;
+  const activating = !item.active;
+  $('#arenaStatusForm').reset();
+  $('#arenaStatusReason').value = 'Pagamento pendente';
+  $('#arenaStatusDetails').value = '';
+  $('#arenaStatusError').textContent = '';
+  $('#arenaStatusEyebrow').textContent = activating ? 'REATIVAR ARENA' : 'SUSPENDER ARENA';
+  $('#arenaStatusTitle').textContent = (activating ? 'Reativar ' : 'Suspender ') + item.name + '?';
+  $('#arenaStatusIntro').textContent = activating
+    ? 'O acesso administrativo e a agenda pública voltarão a funcionar imediatamente.'
+    : 'A arena ficará indisponível para administradores e para novos agendamentos públicos.';
+  $('#arenaStatusReasonFields').classList.toggle('hidden', activating);
+  $('#arenaStatusImpact').classList.toggle('is-reactivate', activating);
+  $('#arenaStatusSubmit').textContent = activating ? 'Reativar arena' : 'Confirmar suspensão';
+  $('#arenaStatusSubmit').classList.toggle('danger-primary', !activating);
+  $('#arenaStatusDialog').showModal();
+}
 async function refreshMasterDetail() {
   if (!masterDetail) return;
   const id = masterDetail.arena.id;
@@ -738,6 +771,8 @@ function describeMasterChange(change) {
   const details = change.details || {};
   if (details.email) return details.email;
   if (change.action === 'court.created') return details.name || '';
+  if (change.action === 'arena.suspended') return details.reason ? 'Motivo: ' + details.reason : 'Arena suspensa pelo Painel Mestre.';
+  if (change.action === 'arena.reactivated') return details.reason ? 'Suspensão anterior: ' + details.reason : 'Acesso administrativo e agenda pública reativados.';
   const before = details.before || {};
   const after = details.after || {};
   const labels = change.action === 'arena.updated'
@@ -790,7 +825,7 @@ function renderMasterManage() {
       <div class="master-manage-list">${admins.map((admin) => `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(admin.email))}</span><div class="master-manage-item-copy"><strong>${esc(admin.email)}</strong><small>${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : `<button class="master-manage-quiet" type="button" data-master-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`).join('')}</div>
       <form id="masterInviteForm" class="master-manage-card" style="margin-top:18px"><h3>Convidar administrador</h3><p class="master-manage-muted">Uma pessoa nova recebe convite por e-mail. Uma conta existente é vinculada com seu acesso atual.</p><label>E-mail do administrador<input name="email" type="email" autocomplete="off" required placeholder="admin@arena.com"></label><p class="master-manage-error" role="alert"></p><div class="master-manage-footer"><button class="primary" type="submit">Enviar convite</button></div></form>`;
   } else {
-    const labels = { 'arena.updated': 'Dados da arena atualizados', 'court.created': 'Quadra criada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Administrador removido' };
+    const labels = { 'arena.updated': 'Dados da arena atualizados', 'arena.suspended': 'Arena suspensa', 'arena.reactivated': 'Arena reativada', 'court.created': 'Quadra criada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Administrador removido' };
     content.innerHTML = `${masterSectionHeading('Histórico de alterações', 'Últimas 50 ações realizadas no Painel Mestre.')}
       ${changes.length ? `<div class="master-manage-history">${changes.map((change) => `<article><strong>${esc(labels[change.action] || change.action)}</strong><small>${new Date(change.created_at).toLocaleString('pt-BR')} · ${esc(change.actor_email || 'Administrador da plataforma')}</small><p>${esc(describeMasterChange(change))}</p></article>`).join('')}</div>` : '<div class="master-empty">Nenhuma alteração registrada até agora.</div>'}`;
   }
@@ -888,34 +923,39 @@ async function refreshCurrentAdminArena() {
 async function getAdminArenaForUser(userId) {
   if (!userId) return null;
 
-  const { data: memberships, error: membershipError } = await supabase
-    .from('arena_admins')
-    .select('arena_id, role')
-    .eq('user_id', userId);
-
-  if (membershipError) throw membershipError;
-  if (!memberships?.length) return null;
-
-  if (memberships.length > 1) {
-    throw new Error('Este usuário está vinculado a mais de uma arena. Revise o cadastro administrativo.');
-  }
-
-  const membership = memberships[0];
-  const { data: linkedArena, error: arenaError } = await supabase
-    .from('arenas')
-    .select('id, slug, name')
-    .eq('id', membership.arena_id)
-    .eq('active', true)
-    .single();
-
-  if (arenaError) throw arenaError;
-  return { ...linkedArena, role: membership.role };
+  const { data, error } = await supabase.rpc('get_my_arena_access');
+  if (error) throw error;
+  return data || null;
 }
 
+function arenaSuspensionMessage(access) {
+  const reason = String(access?.suspension_reason || '').trim();
+  return reason
+    ? 'Acesso temporariamente suspenso. Motivo: ' + reason + '. Entre em contato com o suporte do Quadra Aberta para regularizar sua arena.'
+    : 'Acesso temporariamente suspenso. Entre em contato com o suporte do Quadra Aberta para regularizar sua arena.';
+}
 async function enterAdminPanelForUser(userId) {
   currentAdminUserId = userId;
   isPlatformAdmin = await checkPlatformAdmin(userId);
   const linkedArena = await getAdminArenaForUser(userId);
+
+  if (linkedArena && !linkedArena.active) {
+    const message = arenaSuspensionMessage(linkedArena);
+    if (isPlatformAdmin) {
+      adminNotifications.reset();
+      activeArenaSlug = '';
+      unavailableArenaStatus = 'suspended';
+      clearArenaIdentity();
+      isAdmin = true;
+      view = 'master';
+      await loadMasterDashboard();
+      render();
+      toast(message);
+      return true;
+    }
+    await supabase.auth.signOut();
+    throw new Error(message);
+  }
 
   if (!linkedArena) {
     if (!isPlatformAdmin) return false;
@@ -973,17 +1013,68 @@ async function enterAdminPanelForUser(userId) {
   return true;
 }
 
+async function verifyCurrentAdminArenaAccess() {
+  if (!isAdmin || !arena || view === 'master') return true;
+
+  const access = await getAdminArenaForUser(currentAdminUserId);
+  if (access?.active && access.slug === arena.slug) return true;
+
+  const message = access && !access.active
+    ? arenaSuspensionMessage(access)
+    : 'Seu acesso administrativo a esta arena não está mais disponível.';
+
+  adminNotifications.reset();
+  activeArenaSlug = '';
+  unavailableArenaStatus = access && !access.active ? 'suspended' : '';
+  ++arenaChangeVersion;
+  bookingLoadVersion += 1;
+  realtimeVersion += 1;
+  clearArenaIdentity();
+  bookings = [];
+  scheduleBlocks = [];
+  cancellationHistory = [];
+  await syncBookingsRealtime();
+
+  if (isPlatformAdmin) {
+    view = 'master';
+    await loadMasterDashboard();
+    render();
+    toast(message);
+    return false;
+  }
+
+  await supabase.auth.signOut();
+  isAdmin = false;
+  isPlatformAdmin = false;
+  currentAdminUserId = '';
+  masterArenas = [];
+  arenaSettingsDetail = null;
+  view = 'player';
+  await loadArenaCatalog();
+  render();
+  toast(message);
+  return false;
+}
 async function restoreAdminSession() {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return false;
 
-  const restored = await enterAdminPanelForUser(data.user.id);
-  if (!restored) {
+  try {
+    const restored = await enterAdminPanelForUser(data.user.id);
+    if (!restored) {
+      await supabase.auth.signOut();
+      return false;
+    }
+    return true;
+  } catch (accessError) {
     await supabase.auth.signOut();
-    return false;
+    if (/temporariamente suspenso/i.test(accessError?.message || '')) {
+      unavailableArenaStatus = 'suspended';
+      toast(accessError.message);
+      return false;
+    }
+    throw accessError;
   }
-
-  return true;
 }
 
 async function loadBookings() {
@@ -2263,26 +2354,34 @@ function render() {
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'player'));
     $('#crumb').textContent = 'Visão do jogador';
     $('#eyebrow').textContent = 'AGENDA DE QUADRAS';
-    $('#title').textContent = unavailableArenaStatus === 'private' ? 'Esta agenda está privada no momento.' : 'Selecione uma arena para começar.';
-    $('#subtitle').textContent = unavailableArenaStatus === 'private'
-      ? 'A arena pausou o acesso público. Entre em contato com ela para saber quando as reservas serão reabertas.'
-      : 'A agenda será carregada somente depois que você escolher uma arena no menu lateral.';
+    const isPrivateArena = unavailableArenaStatus === 'private';
+    const isSuspendedArena = unavailableArenaStatus === 'suspended';
+    $('#title').textContent = isSuspendedArena
+      ? 'Esta arena está temporariamente indisponível.'
+      : isPrivateArena ? 'Esta agenda está privada no momento.' : 'Selecione uma arena para começar.';
+    $('#subtitle').textContent = isSuspendedArena
+      ? 'O acesso administrativo e os novos agendamentos desta arena estão temporariamente suspensos.'
+      : isPrivateArena
+        ? 'A arena pausou o acesso público. Entre em contato com ela para saber quando as reservas serão reabertas.'
+        : 'A agenda será carregada somente depois que você escolher uma arena no menu lateral.';
     $('#workspaceTitle').textContent = 'Agenda de quadras';
     $('#workspaceSubtitle').textContent = 'Escolha uma arena para visualizar os horários disponíveis.';
     $('#stats').innerHTML = '';
     $('#stats').classList.remove('hidden');
     document.querySelector('.workspace').classList.remove('hidden');
     $('#schedule').style.removeProperty('--cols');
-    $('#schedule').innerHTML = unavailableArenaStatus === 'private'
-      ? '<div class="empty arena-empty-state">A agenda desta arena não está disponível para jogadores agora.</div>'
-      : '<div class="empty arena-empty-state">Nenhuma arena carregada. Selecione uma arena para visualizar a agenda.</div>';
+    $('#schedule').innerHTML = isSuspendedArena
+      ? '<div class="empty arena-empty-state">Esta arena está temporariamente indisponível para novos agendamentos.</div>'
+      : isPrivateArena
+        ? '<div class="empty arena-empty-state">A agenda desta arena não está disponível para jogadores agora.</div>'
+        : '<div class="empty arena-empty-state">Nenhuma arena carregada. Selecione uma arena para visualizar a agenda.</div>';
     $('#dateCaption').textContent = '';
     $('#newBooking').classList.add('hidden');
     $('#blockSchedule').classList.add('hidden');
     $('#bottom').hidden = true;
     $('#bottom').style.display = 'none';
     $('#blockPanel').classList.add('hidden');
-    if (partnerSpotlight) partnerSpotlight.classList.toggle('hidden', unavailableArenaStatus === 'private');
+    if (partnerSpotlight) partnerSpotlight.classList.toggle('hidden', Boolean(unavailableArenaStatus));
     const merchandisePanel = $('#merchandisePanel');
     if (merchandisePanel) merchandisePanel.classList.add('hidden');
 
@@ -3743,7 +3842,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
     }
 
     $('#loginDialog').close();
-    toast(`Acesso administrativo da ${arena.name} iniciado.`);
+    toast(view === 'master' ? 'Painel Mestre iniciado.' : `Acesso administrativo da ${arena.name} iniciado.`);
   } catch (error) {
     console.error(error);
     $('#loginError').textContent = error.message || 'E-mail ou senha inválidos.';
@@ -3873,13 +3972,13 @@ async function switchArena(nextSlug, { silent = false } = {}) {
     } else {
       try {
         const { data } = await supabase.rpc('get_public_arena_status', { target_slug: nextSlug });
-        unavailableArenaStatus = data === 'private' ? 'private' : '';
+        unavailableArenaStatus = ['private', 'suspended'].includes(data) ? data : '';
       } catch { unavailableArenaStatus = ''; }
       clearArenaIdentity();
       render();
     }
 
-    if (!silent && unavailableArenaStatus !== 'private') toast('Não foi possível trocar de arena. Tente novamente.');
+    if (!silent && !['private', 'suspended'].includes(unavailableArenaStatus)) toast('Não foi possível trocar de arena. Tente novamente.');
   }
 }
 
@@ -3911,14 +4010,81 @@ $('#refreshMaster').onclick = async () => {
 };
 
 $('#masterArenaList').addEventListener('click', (event) => {
+  const toggle = event.target.closest('[data-master-toggle-arena]');
+  if (toggle) {
+    event.stopPropagation();
+    openMasterArenaStatusDialog(toggle.dataset.masterToggleArena);
+    return;
+  }
   const row = event.target.closest('[data-master-arena]');
   if (row) openMasterManage(row.dataset.masterArena);
 });
 $('#masterArenaList').addEventListener('keydown', (event) => {
+  if (event.target.closest('[data-master-toggle-arena]')) return;
   const row = event.target.closest('[data-master-arena]');
   if (row && (event.key === 'Enter' || event.key === ' ')) {
     event.preventDefault();
     openMasterManage(row.dataset.masterArena);
+  }
+});
+
+$('#closeArenaStatus').onclick = () => $('#arenaStatusDialog').close();
+$('#cancelArenaStatus').onclick = () => $('#arenaStatusDialog').close();
+$('#arenaStatusDialog').addEventListener('click', (event) => {
+  if (event.target === $('#arenaStatusDialog')) $('#arenaStatusDialog').close();
+});
+$('#arenaStatusForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isPlatformAdmin || !masterStatusArenaId) return;
+
+  const item = masterArenas.find((candidate) => candidate.arena_id === masterStatusArenaId);
+  if (!item) return;
+
+  const targetActive = !item.active;
+  const preset = $('#arenaStatusReason').value;
+  const details = $('#arenaStatusDetails').value.trim();
+  const errorElement = $('#arenaStatusError');
+  const submitButton = $('#arenaStatusSubmit');
+  let reason = null;
+
+  if (!targetActive) {
+    if (preset === 'Outro' && details.length < 3) {
+      errorElement.textContent = 'Descreva o motivo da suspensão.';
+      return;
+    }
+    reason = preset === 'Outro' ? details : (details ? preset + ' — ' + details : preset);
+  }
+
+  errorElement.textContent = '';
+  submitButton.disabled = true;
+  try {
+    const { error } = await supabase.rpc('master_set_arena_active', {
+      p_arena_id: item.arena_id,
+      p_active: targetActive,
+      p_reason: reason
+    });
+    if (error) throw error;
+
+    if (!targetActive && arena?.id === item.arena_id) {
+      activeArenaSlug = '';
+      unavailableArenaStatus = 'suspended';
+      ++arenaChangeVersion;
+      clearArenaIdentity();
+      bookings = [];
+      scheduleBlocks = [];
+    }
+
+    $('#arenaStatusDialog').close();
+    masterStatusArenaId = '';
+    await loadMasterDashboard();
+    renderMasterPanel();
+    await loadArenaCatalog();
+    toast(targetActive ? item.name + ' reativada com sucesso.' : item.name + ' suspensa com sucesso.');
+  } catch (error) {
+    console.error(error);
+    errorElement.textContent = error.message || 'Não foi possível alterar o acesso da arena.';
+  } finally {
+    submitButton.disabled = false;
   }
 });
 $('#closeMasterManage').onclick = () => $('#masterManageDialog').close();
@@ -4605,8 +4771,15 @@ document.addEventListener('visibilitychange', () => {
   if (!isAdmin && $('#bookingDialog').open && lastPlayerBooking?.paymentStatus === 'pending') {
     checkPaymentStatus(lastPlayerBooking);
   }
-  if (!isAdmin && arena) verifyCurrentPublicArena().catch(console.error);
+  if (isAdmin && arena && view !== 'master') verifyCurrentAdminArenaAccess().catch(console.error);
+  else if (!isAdmin && arena) verifyCurrentPublicArena().catch(console.error);
 });
+
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || reservationTokenFromUrl) return;
+  if (isAdmin && arena && view !== 'master') verifyCurrentAdminArenaAccess().catch(console.error);
+  else if (!isAdmin && arena) verifyCurrentPublicArena().catch(console.error);
+}, 30000);
 
 if (document.modelContext?.registerTool) {
   try {
