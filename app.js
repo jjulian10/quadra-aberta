@@ -509,6 +509,17 @@ async function loadArenaCatalog() {
   renderArenaPickerOptions();
 }
 
+async function loadArenaCatalogWithRetry() {
+  try {
+    await loadArenaCatalog();
+  } catch (error) {
+    // A short gateway interruption should not leave the opening screen unusable.
+    if (![502, 522].includes(Number(error?.status))) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await loadArenaCatalog();
+  }
+}
+
 function populateCourtSelects() {
   filter = 'all';
 
@@ -4066,7 +4077,14 @@ $('#reservationPortal').addEventListener('click', async (event) => {
   }
 });
 
+let initializing = false;
+
 async function initialize() {
+  if (initializing) return;
+  initializing = true;
+  const retryButton = $('#retryConnection');
+  retryButton.disabled = true;
+  retryButton.classList.add('hidden');
   try {
     // Remove a seleção salva pelas versões anteriores, sem afetar pagamentos pendentes.
     try { localStorage.removeItem('quadra-aberta:player-arena'); } catch {}
@@ -4076,7 +4094,7 @@ async function initialize() {
       return;
     }
 
-    await loadArenaCatalog();
+    await loadArenaCatalogWithRetry();
 
     const restored = await restoreAdminSession();
     if (!restored) {
@@ -4102,10 +4120,15 @@ async function initialize() {
     $('#title').textContent = 'Agenda temporariamente indisponível.';
     $('#subtitle').textContent = 'Não foi possível conectar ao serviço de reservas. Tente novamente em alguns instantes.';
     $('#newBooking').classList.add('hidden');
-    toast('Falha ao carregar o catálogo de arenas.');
+    toast('Falha na conexão. Tente novamente.');
+    retryButton.classList.remove('hidden');
+  } finally {
+    initializing = false;
+    retryButton.disabled = false;
   }
 }
 
+$('#retryConnection').addEventListener('click', initialize);
 initialize();
 
 document.addEventListener('visibilitychange', () => {
