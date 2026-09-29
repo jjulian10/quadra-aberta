@@ -559,7 +559,7 @@
 <p class="login-intro" id="loginIntro">Entre com seu e-mail e senha. Sua arena será identificada automaticamente.</p>
 <label>E-mail<input id="adminEmail" type="email" required autocomplete="username" placeholder="seuemail@arena.com"></label>
 <label>Senha<input id="adminPassword" type="password" required autocomplete="current-password" placeholder="Digite sua senha"></label>
-<p id="loginError" role="alert"></p>
+<div id="loginError" class="login-error-slot" role="alert" aria-live="polite"></div>
 <div class="dialog-actions"><button class="primary" type="submit">Entrar no painel</button></div>
 <button class="text-action" id="forgotPassword" type="button">Esqueci minha senha</button>
 <p class="form-note">Acesso exclusivo para administradores cadastrados no Supabase.</p>
