@@ -3149,3 +3149,100 @@ body.admin-session .arena-visibility-note{
   .announcement-detail-visual{min-height:210px;padding:24px 20px}
   .announcement-detail-visual h2{font-size:25px;padding-right:25px}
 }
+
+
+/* Correção mobile — menu administrativo sem cortes */
+@media(max-width:800px){
+  body.admin-session aside{
+    align-items:stretch;
+  }
+
+  body.admin-session aside nav{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    width:100%;
+    margin:0;
+    gap:8px;
+    padding-bottom:0;
+    overflow:visible;
+  }
+
+  body.admin-session aside .nav{
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:8px;
+    width:100%;
+    min-width:0;
+    min-height:46px;
+    margin:0;
+    padding:10px 12px;
+    border-radius:10px;
+    text-align:left;
+    white-space:normal;
+    line-height:1.22;
+    overflow:visible;
+  }
+
+  body.admin-session aside .nav-icon{
+    width:18px;
+    height:18px;
+    min-width:18px;
+    margin-right:0;
+    vertical-align:0;
+  }
+
+  body.admin-session aside .nav-icon svg{
+    width:18px;
+    height:18px;
+  }
+
+  body.admin-session aside .nav-new-badge{
+    display:none;
+  }
+}
+
+@media(max-width:560px){
+  body.admin-session aside{
+    padding:16px 18px 18px;
+    gap:14px;
+  }
+
+  body.admin-session aside nav{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+
+  body.admin-session aside .nav{
+    min-height:48px;
+    padding:10px 11px;
+    font-size:11.5px;
+  }
+
+  .announcement-tabs{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
+    padding:12px 15px;
+    overflow:visible;
+  }
+
+  .announcement-tab{
+    width:100%;
+    min-width:0;
+    padding:10px 8px;
+    border:1px solid #e3eae4;
+    border-radius:9px;
+    background:#f8faf7;
+    text-align:center;
+    white-space:normal;
+    line-height:1.2;
+  }
+
+  .announcement-tab.active{
+    border-color:#acd78d;
+    border-bottom-color:#acd78d;
+    background:#edf7e6;
+    color:var(--green);
+  }
+}
