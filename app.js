@@ -48,11 +48,16 @@ let day = today;
 let view = 'player';
 let isAdmin = false;
 let isPlatformAdmin = false;
+let currentAdminUserId = '';
 let masterArenas = [];
 let masterLoading = false;
 let masterDetail = null;
 let masterTab = 'data';
 let masterCourtEditId = null;
+let arenaSettingsDetail = null;
+let settingsTab = 'data';
+let settingsCourtId = null;
+let unavailableArenaStatus = '';
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
@@ -497,6 +502,7 @@ async function loadArenaCatalog() {
     .from('arenas')
     .select('slug, name, city, address, whatsapp')
     .eq('active', true)
+    .eq('public_access', true)
     .eq('public_listed', true);
 
   if (error) throw error;
@@ -532,6 +538,21 @@ async function loadArenaCatalogWithRetry() {
   }
 }
 
+async function verifyCurrentPublicArena() {
+  if (isAdmin || !arena) return;
+  const slug = arena.slug;
+  const { data, error } = await supabase.from('arenas').select('id').eq('slug', slug).eq('active', true).maybeSingle();
+  if (error || data || isAdmin || arena?.slug !== slug) return;
+  const { data: status } = await supabase.rpc('get_public_arena_status', { target_slug: slug });
+  unavailableArenaStatus = status === 'private' ? 'private' : '';
+  activeArenaSlug = '';
+  ++arenaChangeVersion;
+  clearArenaIdentity();
+  await syncBookingsRealtime();
+  await loadArenaCatalog();
+  render();
+}
+
 function populateCourtSelects() {
   filter = 'all';
 
@@ -551,7 +572,7 @@ function populateCourtSelects() {
 async function loadArena(targetSlug = activeArenaSlug, changeVersion = arenaChangeVersion) {
   const { data: arenaData, error: arenaError } = await supabase
     .from('arenas')
-    .select('id, slug, name, city, timezone, address, whatsapp')
+    .select('id, slug, name, city, timezone, address, whatsapp, public_access, public_listed')
     .eq('slug', targetSlug)
     .eq('active', true)
     .single();
@@ -720,10 +741,11 @@ function describeMasterChange(change) {
   const before = details.before || {};
   const after = details.after || {};
   const labels = change.action === 'arena.updated'
-    ? { name: 'Nome', city: 'Cidade', address: 'Endereço', whatsapp: 'WhatsApp', public_listed: 'Visibilidade' }
+    ? { name: 'Nome', city: 'Cidade', address: 'Endereço', whatsapp: 'WhatsApp', public_listed: 'Catálogo', public_access: 'Agenda' }
     : { name: 'Nome', sport: 'Modalidade', hourly_price: 'Preço/hora', opening_hour: 'Abertura', closing_hour: 'Fechamento', active: 'Situação' };
   const display = (key, value) => {
     if (key === 'public_listed') return value ? 'Pública' : 'Oculta';
+    if (key === 'public_access') return value ? 'Aberta' : 'Privada';
     if (key === 'active') return value ? 'Ativa' : 'Inativa';
     if (key === 'hourly_price') return money(Number(value));
     if (key === 'opening_hour' || key === 'closing_hour') return `${value}h`;
@@ -790,6 +812,79 @@ async function runMasterMutation(form, action) {
   }
 }
 
+async function loadArenaSettings() {
+  if (!isAdmin || !arena) return;
+  const arenaId = arena.id;
+  const { data, error } = await supabase.rpc('get_master_arena_detail', { p_arena_id: arenaId });
+  if (error) throw error;
+  if (!isAdmin || arena?.id !== arenaId) return;
+  arenaSettingsDetail = data;
+  renderArenaSettings();
+}
+
+function renderArenaSettings() {
+  if (!isAdmin || !arena || view !== 'settings') return;
+  const target = $('#arenaSettingsContent');
+  document.querySelectorAll('[data-settings-tab]').forEach((button) =>
+    button.classList.toggle('active', button.dataset.settingsTab === settingsTab));
+  if (!arenaSettingsDetail) {
+    target.innerHTML = '<div class="master-empty">Carregando configurações da arena...</div>';
+    return;
+  }
+  const { arena: item, courts: allCourts, admins, history: changes } = arenaSettingsDetail;
+  if (settingsTab === 'data') {
+    target.innerHTML = `<form id="arenaSettingsForm">
+      <div class="arena-settings-grid"><div class="arena-settings-card"><h3>Informações da arena</h3><p>Mantenha os dados principais sempre atualizados.</p>
+        <div class="master-manage-grid"><label>Nome da arena<input name="name" required minlength="2" maxlength="80" value="${esc(item.name)}"></label><label>Cidade<input name="city" required minlength="2" maxlength="80" value="${esc(item.city || '')}"></label></div>
+        <label>Endereço<input name="address" required minlength="5" maxlength="180" value="${esc(item.address || '')}"></label>
+        <label>WhatsApp da arena<input name="whatsapp" required inputmode="tel" value="${esc(formatWhatsapp(item.whatsapp || ''))}"></label>
+      </div><div class="arena-settings-stack"><div class="arena-settings-card"><h3>Visibilidade da agenda</h3><p>Escolha como os jogadores encontram e acessam sua arena.</p>
+        <div class="arena-settings-toggle"><div><strong>Agenda pública</strong><small>Desligada: jogadores não conseguem abrir horários nem fazer novas reservas, mesmo com o link.</small></div><label class="master-switch" aria-label="Permitir acesso público à agenda"><input name="public_access" type="checkbox" ${item.public_access ? 'checked' : ''}><span></span></label></div>
+        <div class="arena-settings-toggle" style="margin-top:10px"><div><strong>Exibir no catálogo</strong><small>Desligada: arena disponível apenas por link direto, enquanto a agenda estiver pública.</small></div><label class="master-switch" aria-label="Mostrar arena no catálogo"><input name="public_listed" type="checkbox" ${item.public_listed ? 'checked' : ''} ${!item.public_access ? 'disabled' : ''}><span></span></label></div>
+        <div class="arena-settings-help ${item.public_access ? '' : 'private'}">${item.public_access ? (item.public_listed ? 'Sua arena aparece na lista pública e também pode ser aberta pelo link.' : 'Sua arena está fora da lista, mas o link direto continua funcionando.') : 'Agenda privada: apenas os administradores podem gerenciar esta arena. Reservas existentes permanecem registradas.'}</div>
+      </div><div class="arena-settings-card"><h3>Link da agenda</h3><p>Compartilhe com os jogadores quando a agenda estiver aberta.</p><div class="master-manage-link"><span>${esc(masterLink(item.slug))}</span><button type="button" data-settings-copy>Copiar</button></div></div></div></div>
+      <p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="primary" type="submit">Salvar alterações</button></div>
+    </form>`;
+  } else if (settingsTab === 'courts') {
+    const current = allCourts.find((court) => court.id === settingsCourtId);
+    target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Quadras da sua arena</h3><p>Defina valores, modalidade e horário de funcionamento.</p></div><button class="secondary" type="button" data-settings-new-court>＋ Nova quadra</button></div>
+      <div class="arena-settings-list">${allCourts.map((court) => `<div class="master-manage-item"><span class="master-manage-item-icon">▦</span><div class="master-manage-item-copy"><strong>${esc(court.name)} <span class="master-status ${court.active ? 'active' : 'inactive'}">${court.active ? 'Ativa' : 'Inativa'}</span></strong><small>${esc(court.sport)} · ${money(Number(court.hourly_price))}/h · ${court.opening_hour}h–${court.closing_hour}h</small></div><button class="master-manage-quiet" type="button" data-settings-edit-court="${esc(court.id)}">Editar</button></div>`).join('')}</div>
+      ${settingsCourtId !== null ? `<form id="arenaSettingsCourtForm" class="arena-settings-card arena-settings-edit"><h3>${current ? `Editar ${esc(current.name)}` : 'Cadastrar quadra'}</h3><p>As alterações de horário respeitam as reservas futuras.</p><div class="master-manage-grid"><label>Nome<input name="name" required minlength="2" maxlength="60" value="${esc(current?.name || '')}"></label><label>Modalidade<input name="sport" required minlength="2" maxlength="60" value="${esc(current?.sport || 'Vôlei')}"></label><label>Preço por hora (R$)<input name="hourly_price" type="number" min="0" step="0.01" required value="${current ? Number(current.hourly_price) : ''}"></label><label>Abre às<input name="opening_hour" type="number" min="0" max="23" required value="${current?.opening_hour ?? 14}"></label><label>Fecha às<input name="closing_hour" type="number" min="1" max="24" required value="${current?.closing_hour ?? 23}"></label></div>${current ? `<div class="arena-settings-toggle"><div><strong>Quadra ativa</strong><small>Não é possível desativar uma quadra que tenha reservas futuras.</small></div><label class="master-switch" aria-label="Quadra ativa"><input name="active" type="checkbox" ${current.active ? 'checked' : ''}><span></span></label></div>` : ''}<p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="secondary" type="button" data-settings-cancel-court>Cancelar</button><button class="primary" type="submit">Salvar quadra</button></div></form>` : ''}`;
+  } else if (settingsTab === 'admins') {
+    target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Administradores da arena</h3><p>Controle os acessos sem compartilhar sua senha.</p></div><span class="arena-settings-badge">${admins.length} acesso${admins.length === 1 ? '' : 's'}</span></div>
+      <div class="arena-settings-list">${admins.map((admin) => `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(admin.email))}</span><div class="master-manage-item-copy"><strong>${esc(admin.email)}</strong><small>${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : admin.user_id === currentAdminUserId ? '<span class="master-status active">Você</span>' : `<button class="master-manage-quiet" type="button" data-settings-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`).join('')}</div>
+      <form id="arenaSettingsInviteForm" class="arena-settings-card arena-settings-edit"><h3>Adicionar administrador</h3><p>Uma conta nova recebe convite por e-mail. Uma conta existente mantém sua senha atual.</p><label>E-mail do administrador<input name="email" type="email" autocomplete="off" required placeholder="admin@arena.com"></label><p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="primary" type="submit">Enviar convite</button></div></form>`;
+  } else {
+    const labels = { 'arena.updated': 'Informações da arena alteradas', 'court.created': 'Nova quadra cadastrada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Acesso removido' };
+    target.innerHTML = `<div class="arena-settings-card"><h3>Histórico de alterações</h3><p>Últimas 50 ações realizadas nesta arena.</p>${changes.length ? `<div class="master-manage-history">${changes.map((change) => `<article><strong>${esc(labels[change.action] || change.action)}</strong><small>${new Date(change.created_at).toLocaleString('pt-BR')} · ${esc(change.actor_email || 'Administrador')}</small><p>${esc(describeMasterChange(change))}</p></article>`).join('')}</div>` : '<div class="master-empty">Nenhuma alteração registrada até agora.</div>'}</div>`;
+  }
+}
+
+async function runSettingsMutation(form, action, successMessage) {
+  const button = form.querySelector('[type="submit"]');
+  const errorElement = form.querySelector('.arena-settings-error');
+  button.disabled = true;
+  errorElement.textContent = '';
+  try {
+    await action();
+    await loadArenaSettings();
+    toast(successMessage);
+  } catch (error) {
+    console.error(error);
+    errorElement.textContent = error.message || 'Não foi possível salvar. Tente novamente.';
+  } finally { button.disabled = false; }
+}
+
+async function refreshCurrentAdminArena() {
+  if (!isAdmin || !arena) return;
+  const loaded = await loadArena(arena.slug);
+  if (!loaded) return;
+  populateCourtSelects();
+  await refreshBookings(false);
+  await loadArenaCatalog();
+  adminNotifications.setContext(arena, currentAdminUserId, courts);
+}
+
 async function getAdminArenaForUser(userId) {
   if (!userId) return null;
 
@@ -818,6 +913,7 @@ async function getAdminArenaForUser(userId) {
 }
 
 async function enterAdminPanelForUser(userId) {
+  currentAdminUserId = userId;
   isPlatformAdmin = await checkPlatformAdmin(userId);
   const linkedArena = await getAdminArenaForUser(userId);
 
@@ -1070,12 +1166,14 @@ function syncAccessControls() {
   const adminNav = document.querySelector('[data-view="admin"]');
   const financeNav = document.querySelector('[data-view="finance"]');
   const inventoryNav = document.querySelector('[data-view="inventory"]');
+  const settingsNav = document.querySelector('[data-view="settings"]');
   const masterNav = document.querySelector('[data-view="master"]');
   const playerNav = document.querySelector('[data-view="player"]');
 
   adminNav.classList.toggle('hidden', !isAdmin || !arena);
   financeNav.classList.toggle('hidden', !isAdmin || !arena);
   inventoryNav.classList.toggle('hidden', !isAdmin || !arena);
+  settingsNav.classList.toggle('hidden', !isAdmin || !arena);
   masterNav.classList.toggle('hidden', !isPlatformAdmin);
   playerNav.classList.toggle('hidden', isAdmin);
   $('#adminLogin').classList.toggle('hidden', isAdmin);
@@ -1988,7 +2086,7 @@ function openInventoryProductDialog(productId = null) {
 
 
 async function setView(nextView) {
-  if (!['admin', 'finance', 'inventory', 'master', 'player'].includes(nextView)) return;
+  if (!['admin', 'finance', 'inventory', 'settings', 'master', 'player'].includes(nextView)) return;
 
   if (nextView === 'master') {
     if (!isPlatformAdmin) return;
@@ -2005,7 +2103,21 @@ async function setView(nextView) {
 
   if (nextView !== 'player' && !isAdmin) return;
   if (nextView === 'player' && isAdmin) return;
-  if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory') && !arena) return;
+  if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory' || nextView === 'settings') && !arena) return;
+
+  if (nextView === 'settings') {
+    view = 'settings';
+    arenaSettingsDetail = null;
+    settingsTab = 'data';
+    settingsCourtId = null;
+    render();
+    try { await loadArenaSettings(); }
+    catch (error) {
+      console.error(error);
+      $('#arenaSettingsContent').innerHTML = '<div class="master-empty">Não foi possível carregar as configurações. Tente novamente.</div>';
+    }
+    return;
+  }
 
   if (nextView === 'inventory') {
     view = 'inventory';
@@ -2067,11 +2179,14 @@ function render() {
 
   const masterMode = view === 'master' && isPlatformAdmin;
   const inventoryMode = view === 'inventory' && isAdmin && Boolean(arena);
+  const settingsMode = view === 'settings' && isAdmin && Boolean(arena);
   const masterPanel = $('#masterPanel');
   const merchandisePanel = $('#merchandisePanel');
+  const settingsPanel = $('#arenaSettingsPanel');
   const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
   if (merchandisePanel) merchandisePanel.classList.toggle('hidden', !inventoryMode);
+  if (settingsPanel) settingsPanel.classList.toggle('hidden', !settingsMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
 
   if (masterMode) {
@@ -2099,6 +2214,25 @@ function render() {
   }
 
   if (masterPanel) masterPanel.classList.add('hidden');
+
+  if (settingsMode) {
+    document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'settings'));
+    $('#crumb').textContent = 'Configurações da arena';
+    $('#eyebrow').textContent = 'CONFIGURAÇÕES DA ARENA';
+    $('#title').textContent = 'Configurações da arena';
+    $('#subtitle').textContent = 'Mantenha os dados, as quadras e os acessos da sua arena em dia.';
+    $('#newBooking').classList.add('hidden');
+    $('#blockSchedule').classList.add('hidden');
+    $('#stats').classList.add('hidden');
+    document.querySelector('.workspace').classList.add('hidden');
+    $('#blockPanel').classList.add('hidden');
+    $('#bottom').hidden = true;
+    $('#bottom').style.display = 'none';
+    const profitPanel = $('#profitPanel');
+    if (profitPanel) { profitPanel.style.display = 'none'; profitPanel.innerHTML = ''; }
+    renderArenaSettings();
+    return;
+  }
 
   if (inventoryMode) {
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'inventory'));
@@ -2129,22 +2263,26 @@ function render() {
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'player'));
     $('#crumb').textContent = 'Visão do jogador';
     $('#eyebrow').textContent = 'AGENDA DE QUADRAS';
-    $('#title').textContent = 'Selecione uma arena para começar.';
-    $('#subtitle').textContent = 'A agenda será carregada somente depois que você escolher uma arena no menu lateral.';
+    $('#title').textContent = unavailableArenaStatus === 'private' ? 'Esta agenda está privada no momento.' : 'Selecione uma arena para começar.';
+    $('#subtitle').textContent = unavailableArenaStatus === 'private'
+      ? 'A arena pausou o acesso público. Entre em contato com ela para saber quando as reservas serão reabertas.'
+      : 'A agenda será carregada somente depois que você escolher uma arena no menu lateral.';
     $('#workspaceTitle').textContent = 'Agenda de quadras';
     $('#workspaceSubtitle').textContent = 'Escolha uma arena para visualizar os horários disponíveis.';
     $('#stats').innerHTML = '';
     $('#stats').classList.remove('hidden');
     document.querySelector('.workspace').classList.remove('hidden');
     $('#schedule').style.removeProperty('--cols');
-    $('#schedule').innerHTML = '<div class="empty arena-empty-state">Nenhuma arena carregada. Selecione uma arena para visualizar a agenda.</div>';
+    $('#schedule').innerHTML = unavailableArenaStatus === 'private'
+      ? '<div class="empty arena-empty-state">A agenda desta arena não está disponível para jogadores agora.</div>'
+      : '<div class="empty arena-empty-state">Nenhuma arena carregada. Selecione uma arena para visualizar a agenda.</div>';
     $('#dateCaption').textContent = '';
     $('#newBooking').classList.add('hidden');
     $('#blockSchedule').classList.add('hidden');
     $('#bottom').hidden = true;
     $('#bottom').style.display = 'none';
     $('#blockPanel').classList.add('hidden');
-    if (partnerSpotlight) partnerSpotlight.classList.remove('hidden');
+    if (partnerSpotlight) partnerSpotlight.classList.toggle('hidden', unavailableArenaStatus === 'private');
     const merchandisePanel = $('#merchandisePanel');
     if (merchandisePanel) merchandisePanel.classList.add('hidden');
 
@@ -3163,15 +3301,27 @@ $('#blockList').addEventListener('click', async (event) => {
     toast('Não foi possível remover o bloqueio.');
   }
 });
-$('#seePlayer').onclick = async () => {
+async function leaveAdminSession() {
   adminNotifications.reset();
   await supabase.auth.signOut();
   isAdmin = false;
   isPlatformAdmin = false;
+  currentAdminUserId = '';
   masterArenas = [];
+  arenaSettingsDetail = null;
   view = 'player';
+  if (arena && !arena.public_access) {
+    activeArenaSlug = '';
+    ++arenaChangeVersion;
+    clearArenaIdentity();
+  }
   await syncBookingsRealtime();
   await refreshBookings(false);
+  await loadArenaCatalog();
+  render();
+}
+$('#seePlayer').onclick = async () => {
+  await leaveAdminSession();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 document.querySelectorAll('[data-view]').forEach((button) => {
@@ -3601,14 +3751,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
 });
 
 $('#adminLogout').onclick = async () => {
-  adminNotifications.reset();
-  await supabase.auth.signOut();
-  isAdmin = false;
-  isPlatformAdmin = false;
-  masterArenas = [];
-  view = 'player';
-  await syncBookingsRealtime();
-  await refreshBookings(false);
+  await leaveAdminSession();
   toast('Sessão administrativa encerrada.');
 };
 
@@ -3643,6 +3786,7 @@ async function switchArena(nextSlug, { silent = false } = {}) {
   const previousSlug = arena?.slug || activeArenaSlug || '';
 
   if (!nextSlug) {
+    unavailableArenaStatus = '';
     adminNotifications.reset();
     activeArenaSlug = '';
     const changeVersion = ++arenaChangeVersion;
@@ -3674,6 +3818,7 @@ async function switchArena(nextSlug, { silent = false } = {}) {
   if (nextSlug === activeArenaSlug && arena?.slug === nextSlug) return;
 
   adminNotifications.reset();
+  unavailableArenaStatus = '';
   activeArenaSlug = nextSlug;
   const changeVersion = ++arenaChangeVersion;
   bookingLoadVersion += 1;
@@ -3726,11 +3871,15 @@ async function switchArena(nextSlug, { silent = false } = {}) {
       await syncBookingsRealtime();
       render();
     } else {
+      try {
+        const { data } = await supabase.rpc('get_public_arena_status', { target_slug: nextSlug });
+        unavailableArenaStatus = data === 'private' ? 'private' : '';
+      } catch { unavailableArenaStatus = ''; }
       clearArenaIdentity();
       render();
     }
 
-    toast('Não foi possível trocar de arena. Tente novamente.');
+    if (!silent && unavailableArenaStatus !== 'private') toast('Não foi possível trocar de arena. Tente novamente.');
   }
 }
 
@@ -3859,6 +4008,94 @@ $('#masterManageContent').addEventListener('submit', (event) => {
       if (data?.error) throw new Error(data.error);
       toast(data?.invited ? 'Convite enviado por e-mail.' : 'Administrador vinculado à arena.');
     });
+  }
+});
+
+document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => {
+  settingsTab = button.dataset.settingsTab;
+  settingsCourtId = null;
+  renderArenaSettings();
+}));
+
+$('#arenaSettingsContent').addEventListener('input', (event) => {
+  if (event.target.name !== 'public_access') return;
+  const catalog = $('#arenaSettingsForm')?.elements.public_listed;
+  if (catalog) catalog.disabled = !event.target.checked;
+});
+
+$('#arenaSettingsContent').addEventListener('click', async (event) => {
+  if (event.target.closest('[data-settings-copy]')) {
+    try { await navigator.clipboard.writeText(masterLink(arena.slug)); toast('Link da agenda copiado.'); }
+    catch { toast('Não foi possível copiar o link.'); }
+  }
+  if (event.target.closest('[data-settings-new-court]')) { settingsCourtId = 'new'; renderArenaSettings(); }
+  const edit = event.target.closest('[data-settings-edit-court]');
+  if (edit) { settingsCourtId = edit.dataset.settingsEditCourt; renderArenaSettings(); }
+  if (event.target.closest('[data-settings-cancel-court]')) { settingsCourtId = null; renderArenaSettings(); }
+  const remove = event.target.closest('[data-settings-remove-admin]');
+  if (remove && arenaSettingsDetail) {
+    const target = arenaSettingsDetail.admins.find((admin) => admin.user_id === remove.dataset.settingsRemoveAdmin);
+    if (!target || !window.confirm(`Remover o acesso de ${target.email} à ${arena.name}? Essa pessoa deixará de administrar a arena.`)) return;
+    remove.disabled = true;
+    try {
+      const { error } = await supabase.rpc('master_remove_admin', { p_arena_id: arena.id, p_user_id: target.user_id });
+      if (error) throw error;
+      await loadArenaSettings();
+      toast('Acesso administrativo removido.');
+    } catch (error) { console.error(error); toast(error.message || 'Não foi possível remover o acesso.'); }
+    finally { remove.disabled = false; }
+  }
+});
+
+$('#arenaSettingsContent').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!isAdmin || !arena || !arenaSettingsDetail || view !== 'settings') return;
+  const form = event.target;
+  const arenaId = arena.id;
+  if (form.id === 'arenaSettingsForm') {
+    const values = new FormData(form);
+    const publicAccess = form.elements.public_access.checked;
+    const publicListed = form.elements.public_listed.checked;
+    if (arenaSettingsDetail.arena.public_access && !publicAccess &&
+      !window.confirm('Deixar a agenda privada? Jogadores não poderão abrir horários ou fazer novas reservas, mesmo com o link. As reservas existentes serão mantidas.')) return;
+    runSettingsMutation(form, async () => {
+      const { error } = await supabase.rpc('master_update_arena', { p_arena_id: arenaId, p_data: {
+        name: String(values.get('name')).trim(), city: String(values.get('city')).trim(),
+        address: String(values.get('address')).trim(), whatsapp: String(values.get('whatsapp')).replace(/\D/g, ''),
+        public_access: publicAccess, public_listed: publicListed
+      } });
+      if (error) throw error;
+      await refreshCurrentAdminArena();
+    }, 'Configurações da arena salvas.');
+  } else if (form.id === 'arenaSettingsCourtForm') {
+    const current = arenaSettingsDetail.courts.find((court) => court.id === settingsCourtId);
+    const values = new FormData(form);
+    const active = current ? form.elements.active.checked : true;
+    if (current?.active && !active && !window.confirm(`Desativar ${current.name}? A quadra sairá da agenda, desde que não tenha reservas futuras.`)) return;
+    runSettingsMutation(form, async () => {
+      const { error } = await supabase.rpc('master_save_court', { p_arena_id: arenaId,
+        p_court_id: current?.id || null, p_data: {
+          name: String(values.get('name')).trim(), sport: String(values.get('sport')).trim(),
+          hourly_price: Number(values.get('hourly_price')), opening_hour: Number(values.get('opening_hour')),
+          closing_hour: Number(values.get('closing_hour')), active
+        }
+      });
+      if (error) throw error;
+      settingsCourtId = null;
+      await refreshCurrentAdminArena();
+    }, 'Quadra salva com sucesso.');
+  } else if (form.id === 'arenaSettingsInviteForm') {
+    const email = String(new FormData(form).get('email')).trim().toLowerCase();
+    runSettingsMutation(form, async () => {
+      const { data, error } = await supabase.functions.invoke('manage-arena-admin', { body: { arenaId, email } });
+      if (error) {
+        let message = error.message;
+        try { message = (await error.context?.json())?.error || message; } catch {}
+        throw new Error(message);
+      }
+      if (data?.error) throw new Error(data.error);
+      form.dataset.invited = data?.invited ? 'true' : 'false';
+    }, 'Administrador adicionado. Convites para novos usuários são enviados por e-mail.');
   }
 });
 
@@ -4368,6 +4605,7 @@ document.addEventListener('visibilitychange', () => {
   if (!isAdmin && $('#bookingDialog').open && lastPlayerBooking?.paymentStatus === 'pending') {
     checkPaymentStatus(lastPlayerBooking);
   }
+  if (!isAdmin && arena) verifyCurrentPublicArena().catch(console.error);
 });
 
 if (document.modelContext?.registerTool) {

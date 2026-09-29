@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
       .select("id, name")
       .eq("slug", arenaSlug)
       .eq("active", true)
+      .eq("public_access", true)
       .single();
 
     if (arenaError || !arena) return json({ error: "Arena indisponível." }, 404);
@@ -90,7 +91,7 @@ Deno.serve(async (req) => {
         .from("schedule_blocks")
         .select("start_hour, duration")
         .eq("arena_id", arena.id)
-        .eq("booking_date", bookingDate)
+        .eq("block_date", bookingDate)
         .or(`court_id.is.null,court_id.eq.${courtId}`),
     ]);
 

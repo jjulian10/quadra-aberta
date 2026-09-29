@@ -26,11 +26,6 @@ Deno.serve(async (req: Request) => {
   const { data: identity, error: authError } = await service.auth.getUser(authorization.slice(7));
   if (authError || !identity.user) return json({ error: "Sessão inválida." }, 401);
 
-  const { data: platformAdmin, error: permissionError } = await service.from("platform_admins")
-    .select("user_id").eq("user_id", identity.user.id).maybeSingle();
-  if (permissionError) return json({ error: "Não foi possível validar o acesso." }, 500);
-  if (!platformAdmin) return json({ error: "Acesso restrito ao Painel Mestre." }, 403);
-
   let input: Record<string, unknown>;
   try { input = await req.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
   const arenaId = String(input?.arenaId || "");
@@ -42,6 +37,13 @@ Deno.serve(async (req: Request) => {
   const { data: arena, error: arenaError } = await service.from("arenas")
     .select("id").eq("id", arenaId).maybeSingle();
   if (arenaError || !arena) return json({ error: "Arena não encontrada." }, 404);
+
+  const [{ data: platformAdmin, error: platformError }, { data: arenaAdmin, error: membershipError }] = await Promise.all([
+    service.from("platform_admins").select("user_id").eq("user_id", identity.user.id).maybeSingle(),
+    service.from("arena_admins").select("user_id").eq("arena_id", arenaId).eq("user_id", identity.user.id).maybeSingle(),
+  ]);
+  if (platformError || membershipError) return json({ error: "Não foi possível validar o acesso." }, 500);
+  if (!platformAdmin && !arenaAdmin) return json({ error: "Acesso restrito aos administradores desta arena." }, 403);
 
   // Existing users keep their credentials. New users receive Supabase's normal invite email.
   let existing = null;
