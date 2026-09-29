@@ -216,6 +216,44 @@
     <div class="master-manage-content" id="masterManageContent"></div>
   </div>
 </dialog>
+<dialog id="arenaStatusDialog" class="master-dialog arena-status-dialog" aria-labelledby="arenaStatusTitle">
+  <form id="arenaStatusForm">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow" id="arenaStatusEyebrow">SUSPENDER ARENA</p>
+        <h2 id="arenaStatusTitle">Suspender arena?</h2>
+      </div>
+      <button type="button" id="closeArenaStatus" class="close" aria-label="Fechar">×</button>
+    </div>
+    <p class="login-intro" id="arenaStatusIntro"></p>
+    <div class="arena-status-impact" id="arenaStatusImpact">
+      <span class="arena-status-impact-icon" aria-hidden="true">!</span>
+      <div>
+        <strong>Bloqueio operacional, sem perda de dados</strong>
+        <small>Reservas, financeiro, produtos, quadras e administradores permanecem salvos. Apenas o acesso é interrompido.</small>
+      </div>
+    </div>
+    <div id="arenaStatusReasonFields" class="arena-status-fields">
+      <label>Motivo da suspensão
+        <select id="arenaStatusReason" required>
+          <option>Pagamento pendente</option>
+          <option>Solicitação da arena</option>
+          <option>Manutenção</option>
+          <option>Violação dos termos</option>
+          <option>Outro</option>
+        </select>
+      </label>
+      <label>Detalhes <small>(opcional)</small>
+        <textarea id="arenaStatusDetails" rows="3" maxlength="240" placeholder="Ex.: mensalidade de setembro pendente"></textarea>
+      </label>
+    </div>
+    <p id="arenaStatusError" class="master-manage-error" role="alert"></p>
+    <div class="dialog-actions arena-status-actions">
+      <button class="secondary" id="cancelArenaStatus" type="button">Cancelar</button>
+      <button class="primary danger-primary" id="arenaStatusSubmit" type="submit">Confirmar suspensão</button>
+    </div>
+  </form>
+</dialog>
 <section class="partner-spotlight hidden" id="partnerSpotlight" aria-labelledby="partnerSpotlightTitle">
   <div class="partner-copy">
     <p class="partner-kicker">PARCERIA QUADRA ABERTA</p>
