@@ -109,6 +109,7 @@
 <button data-view="admin" class="nav hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg></span>Agenda e reservas</button>
 <button data-view="finance" class="nav hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20V8"/></svg></span>Financeiro</button>
 <button data-view="inventory" class="nav hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5 12 4 3 8.5"/><path d="M21 8.5V16l-9 4.5L3 16V8.5"/><path d="M12 12.5 3 8.5"/><path d="M12 12.5 21 8.5"/><path d="M12 12.5V20.5"/></svg></span>Mercadorias</button>
+<button data-view="announcements" class="nav hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13V9l11-4v12L4 13Z"/><path d="M15 9.5c2.7.4 4.5 1.8 4.5 3.5S17.7 16.1 15 16.5"/><path d="m5 13 1.5 6h3L8 14"/></svg></span>Novidades e avisos <span class="nav-new-badge">Novo</span></button>
 <button data-view="settings" class="nav hidden"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l-1.9 1.9a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5h-2.7a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-1.9-1.9a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H4v-2.7h1.4a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l1.9-1.9a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5H14a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l1.9 1.9a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21V14h-1.1a1.6 1.6 0 0 0-1.5 1Z"/></svg></span>Configurações da arena</button>
 <button data-view="master" id="masterNav" class="nav hidden">◆ &nbsp; Painel Mestre</button>
 <button data-view="player" class="nav">◷ &nbsp; Visão do jogador</button>
@@ -164,6 +165,7 @@
 <button class="primary hidden" id="newBooking">＋ Nova reserva</button>
 </div>
 </div>
+<section class="arena-announcements-public hidden" id="arenaAnnouncementsPublic" aria-label="Novidades da arena"></section>
 <section class="stats" id="stats">
 </section>
 <section class="master-panel hidden" id="masterPanel">
@@ -191,6 +193,7 @@
   </div>
 </section>
 <section class="merchandise-panel hidden" id="merchandisePanel" aria-label="Gestão de mercadorias"></section>
+<section class="announcements-panel hidden" id="announcementsPanel" aria-label="Gestão de novidades e avisos"></section>
 <section class="arena-settings-panel hidden" id="arenaSettingsPanel" aria-label="Configurações da arena">
   <nav class="arena-settings-tabs" aria-label="Seções de configurações">
     <button type="button" data-settings-tab="data" class="active"><span>⌂</span><strong>Dados gerais</strong><small>Informações da arena</small></button>
@@ -465,6 +468,103 @@
 <div class="dialog-actions"><button class="primary" id="submitNewArena" type="submit">Criar arena</button></div>
 </form>
 </dialog>
+<dialog id="announcementDialog" class="announcement-dialog" aria-labelledby="announcementDialogTitle">
+<form id="announcementForm">
+  <div class="dialog-heading">
+    <div>
+      <p class="eyebrow">NOVIDADES E AVISOS</p>
+      <h2 id="announcementDialogTitle">Nova novidade / aviso</h2>
+    </div>
+    <button type="button" id="closeAnnouncementDialog" class="close" aria-label="Fechar">×</button>
+  </div>
+  <p class="login-intro" id="announcementDialogIntro">Crie um destaque para aparecer no início da página pública da sua arena.</p>
+
+  <div class="announcement-form-layout">
+    <div class="announcement-form-main">
+      <label>Título *
+        <input id="announcementTitle" name="title" type="text" required minlength="3" maxlength="100" placeholder="Ex.: Promoção Futebol Noturno">
+      </label>
+      <label>Descrição *
+        <textarea id="announcementDescription" name="description" required minlength="5" maxlength="500" rows="4" placeholder="Conte a novidade de forma curta e objetiva."></textarea>
+        <small class="announcement-character-count"><span id="announcementDescriptionCount">0</span>/500</small>
+      </label>
+
+      <label class="announcement-image-field">Imagem <span class="inventory-optional">(opcional)</span>
+        <div class="announcement-image-upload">
+          <div class="announcement-image-preview" id="announcementImagePreview">
+            <span aria-hidden="true">◇</span>
+            <small>Prévia do banner</small>
+          </div>
+          <div class="announcement-image-upload-copy">
+            <strong>Imagem de destaque</strong>
+            <small>Recomendado: 1200 × 400 px. JPG, PNG ou WebP de até 5 MB.</small>
+            <input id="announcementImage" type="file" accept="image/jpeg,image/png,image/webp">
+          </div>
+        </div>
+      </label>
+
+      <div class="announcement-form-grid">
+        <label>Tipo de novidade *
+          <select id="announcementType" name="announcement_type" required>
+            <option value="promotion">Promoção</option>
+            <option value="notice">Aviso</option>
+            <option value="event">Evento</option>
+          </select>
+        </label>
+        <label>Texto do botão
+          <input id="announcementCtaLabel" name="cta_label" type="text" minlength="2" maxlength="40" value="Ver detalhes">
+        </label>
+      </div>
+
+      <div class="announcement-feature-toggle">
+        <div>
+          <span class="announcement-feature-icon" aria-hidden="true">★</span>
+          <div><strong>Destacar no topo</strong><small>Exibe esta novidade como o banner principal da página da arena.</small></div>
+        </div>
+        <label class="master-switch" aria-label="Destacar novidade no topo"><input id="announcementFeatured" type="checkbox"><span></span></label>
+      </div>
+    </div>
+
+    <aside class="announcement-form-side">
+      <div class="announcement-period-card">
+        <strong>Período de exibição</strong>
+        <div class="announcement-form-grid">
+          <label>Data de início *
+            <input id="announcementStartsOn" name="starts_on" type="date" required>
+          </label>
+          <label>Data de fim *
+            <input id="announcementEndsOn" name="ends_on" type="date" required>
+          </label>
+        </div>
+        <label>Link opcional
+          <input id="announcementLinkUrl" name="link_url" type="url" inputmode="url" placeholder="https://...">
+        </label>
+      </div>
+
+      <div class="announcement-form-tip">
+        <span aria-hidden="true">i</span>
+        <div><strong>Dica</strong><small>Use imagens chamativas e textos curtos para atrair mais clientes sem poluir a agenda.</small></div>
+      </div>
+
+      <div class="announcement-live-preview">
+        <span>PRÉVIA PARA O PÚBLICO</span>
+        <div id="announcementLivePreview"></div>
+      </div>
+    </aside>
+  </div>
+
+  <p id="announcementError" class="arena-settings-error" role="alert"></p>
+  <div class="dialog-actions announcement-dialog-actions">
+    <button class="secondary" id="cancelAnnouncementDialog" type="button">Cancelar</button>
+    <button class="primary" id="submitAnnouncement" type="submit">Publicar novidade</button>
+  </div>
+</form>
+</dialog>
+
+<dialog id="announcementDetailDialog" class="announcement-detail-dialog" aria-labelledby="announcementDetailTitle">
+  <div class="announcement-detail-shell" id="announcementDetailContent"></div>
+</dialog>
+
 <dialog id="inventoryProductDialog" class="inventory-dialog">
 <form id="inventoryProductForm">
 <div class="dialog-heading">
