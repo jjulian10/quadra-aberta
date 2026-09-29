@@ -74,6 +74,13 @@ let inventorySaleQuantity = 1;
 let inventoryLoading = false;
 let inventoryImagePreviewObjectUrl = '';
 let inventoryCatalogSelectionId = '';
+let arenaAnnouncements = [];
+let publicAnnouncements = [];
+let announcementsLoading = false;
+let announcementFilter = 'all';
+let announcementEditingId = null;
+let announcementPublicIndex = 0;
+let announcementImagePreviewObjectUrl = '';
 const INVENTORY_PRODUCT_CATALOG = [
   {
     id: 'agua-crystal-500',
@@ -365,6 +372,13 @@ function clearArenaIdentity() {
   inventoryEditingId = null;
   inventorySaleProductId = '';
   inventorySaleQuantity = 1;
+  arenaAnnouncements = [];
+  publicAnnouncements = [];
+  announcementsLoading = false;
+  announcementFilter = 'all';
+  announcementEditingId = null;
+  announcementPublicIndex = 0;
+  clearAnnouncementImagePreviewObjectUrl();
   selectedId = null;
   filter = 'all';
   lastPlayerBooking = null;
@@ -1321,6 +1335,7 @@ function syncAccessControls() {
   const adminNav = document.querySelector('[data-view="admin"]');
   const financeNav = document.querySelector('[data-view="finance"]');
   const inventoryNav = document.querySelector('[data-view="inventory"]');
+  const announcementsNav = document.querySelector('[data-view="announcements"]');
   const settingsNav = document.querySelector('[data-view="settings"]');
   const masterNav = document.querySelector('[data-view="master"]');
   const playerNav = document.querySelector('[data-view="player"]');
@@ -1328,6 +1343,7 @@ function syncAccessControls() {
   adminNav.classList.toggle('hidden', !isAdmin || !arena);
   financeNav.classList.toggle('hidden', !isAdmin || !arena);
   inventoryNav.classList.toggle('hidden', !isAdmin || !arena);
+  announcementsNav.classList.toggle('hidden', !isAdmin || !arena);
   settingsNav.classList.toggle('hidden', !isAdmin || !arena);
   masterNav.classList.toggle('hidden', !isPlatformAdmin);
   playerNav.classList.toggle('hidden', isAdmin);
@@ -2240,8 +2256,417 @@ function openInventoryProductDialog(productId = null) {
 }
 
 
+function announcementTypeLabel(type) {
+  return {
+    promotion: 'Promoção',
+    notice: 'Aviso',
+    event: 'Evento'
+  }[type] || 'Novidade';
+}
+
+function announcementTypeIcon(type) {
+  return {
+    promotion: '◆',
+    notice: '!',
+    event: '★'
+  }[type] || '●';
+}
+
+function mapArenaAnnouncement(item) {
+  return {
+    id: item.id,
+    arenaId: item.arena_id,
+    templateKey: item.template_key || null,
+    type: item.announcement_type,
+    title: item.title,
+    description: item.description,
+    imagePath: item.image_path || null,
+    linkUrl: item.link_url || '',
+    ctaLabel: item.cta_label || 'Ver detalhes',
+    startsOn: item.starts_on,
+    endsOn: item.ends_on,
+    isFeatured: Boolean(item.is_featured),
+    active: Boolean(item.active),
+    sortOrder: Number(item.sort_order || 0),
+    createdAt: item.created_at,
+    updatedAt: item.updated_at
+  };
+}
+
+function announcementImageUrl(item) {
+  if (!item?.imagePath) return '';
+  return supabase.storage.from('announcement-images').getPublicUrl(item.imagePath).data.publicUrl || '';
+}
+
+function clearAnnouncementImagePreviewObjectUrl() {
+  if (!announcementImagePreviewObjectUrl) return;
+  URL.revokeObjectURL(announcementImagePreviewObjectUrl);
+  announcementImagePreviewObjectUrl = '';
+}
+
+function announcementStatus(item) {
+  if (!item.active) return { key: 'disabled', label: 'Desativada' };
+  const current = localDate(new Date());
+  if (item.startsOn > current) return { key: 'scheduled', label: 'Programada' };
+  if (item.endsOn < current) return { key: 'expired', label: 'Expirada' };
+  return { key: 'active', label: 'Ativa' };
+}
+
+function announcementDateLabel(value) {
+  if (!value) return '—';
+  return new Date(value + 'T12:00:00').toLocaleDateString('pt-BR');
+}
+
+function announcementShortTitle(title) {
+  const words = String(title || 'Novidade').trim().split(/\s+/).slice(0, 4);
+  return words.join(' ');
+}
+
+async function loadAnnouncementsData() {
+  if (!isAdmin || !arena) return false;
+  const arenaId = arena.id;
+  announcementsLoading = true;
+  try {
+    const { data, error } = await supabase
+      .from('arena_announcements')
+      .select('id, arena_id, template_key, announcement_type, title, description, image_path, link_url, cta_label, starts_on, ends_on, is_featured, active, sort_order, created_at, updated_at')
+      .eq('arena_id', arenaId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!isAdmin || arena?.id !== arenaId) return false;
+    arenaAnnouncements = (data || []).map(mapArenaAnnouncement);
+    return true;
+  } finally {
+    announcementsLoading = false;
+  }
+}
+
+async function loadPublicAnnouncements() {
+  if (!arena || isAdmin) {
+    publicAnnouncements = [];
+    announcementPublicIndex = 0;
+    return false;
+  }
+  const arenaId = arena.id;
+  const current = localDate(new Date());
+  const { data, error } = await supabase
+    .from('arena_announcements')
+    .select('id, arena_id, announcement_type, title, description, image_path, link_url, cta_label, starts_on, ends_on, is_featured, active, sort_order, created_at, updated_at')
+    .eq('arena_id', arenaId)
+    .eq('active', true)
+    .lte('starts_on', current)
+    .gte('ends_on', current)
+    .order('is_featured', { ascending: false })
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  if (!arena || arena.id !== arenaId || isAdmin) return false;
+  publicAnnouncements = (data || []).map(mapArenaAnnouncement);
+  announcementPublicIndex = 0;
+  return true;
+}
+
+function filteredArenaAnnouncements() {
+  if (announcementFilter === 'all') return arenaAnnouncements;
+  return arenaAnnouncements.filter((item) => announcementStatus(item).key === announcementFilter);
+}
+
+function announcementFilterCount(filterKey) {
+  if (filterKey === 'all') return arenaAnnouncements.length;
+  return arenaAnnouncements.filter((item) => announcementStatus(item).key === filterKey).length;
+}
+
+function announcementThumbHtml(item) {
+  const src = announcementImageUrl(item);
+  const classes = `announcement-admin-thumb type-${esc(item.type)} ${src ? '' : 'no-image'}`;
+  const image = src ? `<img src="${esc(src)}" alt="" data-announcement-image>` : '';
+  return `<div class="${classes}" data-short="${esc(announcementShortTitle(item.title))}">${image}</div>`;
+}
+
+function renderAnnouncementsPanel() {
+  const panel = $('#announcementsPanel');
+  if (!panel || view !== 'announcements' || !isAdmin || !arena) return;
+
+  if (announcementsLoading) {
+    panel.innerHTML = '<div class="announcement-admin-shell"><div class="announcement-admin-empty">Carregando novidades da arena...</div></div>';
+    return;
+  }
+
+  const rows = filteredArenaAnnouncements();
+  const filters = [
+    ['all', 'Todos'],
+    ['active', 'Ativas'],
+    ['scheduled', 'Programadas'],
+    ['expired', 'Expiradas']
+  ];
+
+  panel.innerHTML = `
+    <div class="announcement-admin-shell">
+      <div class="announcement-admin-head">
+        <div class="announcement-admin-title">
+          <span class="announcement-admin-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 13V9l11-4v12L4 13Z"></path><path d="M15 9.5c2.7.4 4.5 1.8 4.5 3.5S17.7 16.1 15 16.5"></path><path d="m5 13 1.5 6h3L8 14"></path>
+            </svg>
+          </span>
+          <div><h2>Novidades e Avisos</h2><p>Divulgue promoções, eventos, comunicados e novidades para os clientes da ${esc(arena.name)}.</p></div>
+        </div>
+        <button class="announcement-new-button" type="button" data-announcement-new>＋ Nova novidade</button>
+      </div>
+      <div class="announcement-tabs" role="tablist" aria-label="Filtrar novidades">
+        ${filters.map(([key, label]) => `<button type="button" class="announcement-tab ${announcementFilter === key ? 'active' : ''}" data-announcement-filter="${key}">${label}<span>${announcementFilterCount(key)}</span></button>`).join('')}
+      </div>
+      <div class="announcement-admin-list">
+        ${rows.length ? rows.map((item) => {
+          const status = announcementStatus(item);
+          return `<article class="announcement-admin-row">
+            ${announcementThumbHtml(item)}
+            <div class="announcement-admin-copy">
+              <div class="announcement-admin-meta">
+                <span class="announcement-status-badge ${status.key}">${esc(status.label)}</span>
+                <span class="announcement-type-badge ${esc(item.type)}">${esc(announcementTypeLabel(item.type))}</span>
+                ${item.isFeatured ? '<span class="announcement-feature-badge">★ Destaque</span>' : ''}
+              </div>
+              <strong>${esc(item.title)}</strong>
+              <p>${esc(item.description)}</p>
+              <span class="announcement-admin-date">▣ ${announcementDateLabel(item.startsOn)} – ${announcementDateLabel(item.endsOn)}</span>
+            </div>
+            <div class="announcement-admin-actions">
+              <button class="announcement-toggle ${item.active ? 'active' : ''}" type="button" data-announcement-toggle="${esc(item.id)}" aria-pressed="${item.active}" aria-label="${item.active ? 'Desativar' : 'Ativar'} ${esc(item.title)}"></button>
+              <button class="announcement-action-button edit" type="button" data-announcement-edit="${esc(item.id)}">✎ <span>Editar</span></button>
+              <button class="announcement-action-button delete" type="button" data-announcement-delete="${esc(item.id)}" aria-label="Excluir ${esc(item.title)}">⌫</button>
+            </div>
+          </article>`;
+        }).join('') : '<div class="announcement-admin-empty">Nenhuma novidade encontrada neste filtro.</div>'}
+      </div>
+    </div>`;
+}
+
+function announcementPublicCardStyle(item, src) {
+  return src ? ` style="background-image:url('${esc(src)}')"` : '';
+}
+
+function announcementPeriodText(item) {
+  if (item.startsOn === item.endsOn) return announcementDateLabel(item.startsOn);
+  return `${announcementDateLabel(item.startsOn)} – ${announcementDateLabel(item.endsOn)}`;
+}
+
+function announcementMainCta(item) {
+  if (item.linkUrl) {
+    return `<a class="announcement-public-cta" href="${esc(item.linkUrl)}" target="_blank" rel="noopener noreferrer">${esc(item.ctaLabel)} <span aria-hidden="true">→</span></a>`;
+  }
+  if (item.type === 'promotion' || /reserv/i.test(item.ctaLabel)) {
+    return `<button class="announcement-public-cta" type="button" data-announcement-schedule>${esc(item.ctaLabel)} <span aria-hidden="true">→</span></button>`;
+  }
+  return `<button class="announcement-public-cta" type="button" data-announcement-detail="${esc(item.id)}">${esc(item.ctaLabel)} <span aria-hidden="true">→</span></button>`;
+}
+
+function renderPublicAnnouncements() {
+  const section = $('#arenaAnnouncementsPublic');
+  if (!section) return;
+
+  const visible = !isAdmin && view === 'player' && Boolean(arena) && publicAnnouncements.length > 0;
+  section.classList.toggle('hidden', !visible);
+  if (!visible) {
+    section.innerHTML = '';
+    return;
+  }
+
+  const total = publicAnnouncements.length;
+  announcementPublicIndex = ((announcementPublicIndex % total) + total) % total;
+  const ordered = Array.from({ length: total }, (_, offset) =>
+    publicAnnouncements[(announcementPublicIndex + offset) % total]
+  );
+  const main = ordered[0];
+  const secondary = ordered.slice(1, 3);
+  const mainSrc = announcementImageUrl(main);
+
+  section.innerHTML = `
+    <div class="announcement-public-head">
+      <div class="announcement-public-title">
+        <span aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 13V9l11-4v12L4 13Z"></path><path d="M15 9.5c2.7.4 4.5 1.8 4.5 3.5S17.7 16.1 15 16.5"></path><path d="m5 13 1.5 6h3L8 14"></path>
+          </svg>
+        </span>
+        <div><h2>Novidades da Arena</h2><p>Promoções, avisos e novidades da ${esc(arena.name)}.</p></div>
+      </div>
+      ${total > 1 ? `<div class="announcement-public-nav"><button type="button" data-announcement-prev aria-label="Novidade anterior">‹</button><button type="button" data-announcement-next aria-label="Próxima novidade">›</button></div>` : ''}
+    </div>
+    <div class="announcement-public-grid">
+      <article class="announcement-public-card main type-${esc(main.type)} ${mainSrc ? 'has-image' : ''}"${announcementPublicCardStyle(main, mainSrc)}>
+        <div class="announcement-public-content">
+          <span class="announcement-public-type ${esc(main.type)}">${announcementTypeIcon(main.type)} ${esc(announcementTypeLabel(main.type))}${main.isFeatured ? ' · Destaque' : ''}</span>
+          <h3>${esc(main.title)}</h3>
+          <p>${esc(main.description)}</p>
+          <div class="announcement-public-period">▣ ${esc(announcementPeriodText(main))}</div>
+          ${announcementMainCta(main)}
+        </div>
+        ${total > 1 ? `<div class="announcement-public-dots">${publicAnnouncements.map((_, index) => `<i class="${index === announcementPublicIndex ? 'active' : ''}"></i>`).join('')}</div>` : ''}
+      </article>
+      ${secondary.map((item) => {
+        const src = announcementImageUrl(item);
+        return `<article class="announcement-public-card secondary type-${esc(item.type)} ${src ? 'has-image' : ''}"${announcementPublicCardStyle(item, src)}>
+          <div>
+            <span class="announcement-public-type ${esc(item.type)}">${announcementTypeIcon(item.type)} ${esc(announcementTypeLabel(item.type))}</span>
+            <h3>${esc(item.title)}</h3>
+            <div class="announcement-public-period">▣ ${esc(announcementPeriodText(item))}</div>
+            <p>${esc(item.description)}</p>
+            ${item.linkUrl
+              ? `<a class="announcement-public-detail" href="${esc(item.linkUrl)}" target="_blank" rel="noopener noreferrer">${esc(item.ctaLabel)} →</a>`
+              : `<button class="announcement-public-detail" type="button" data-announcement-detail="${esc(item.id)}">${esc(item.ctaLabel)} →</button>`}
+          </div>
+        </article>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderAnnouncementDetail(id) {
+  const item = publicAnnouncements.find((candidate) => candidate.id === id);
+  if (!item) return;
+  const src = announcementImageUrl(item);
+  const content = $('#announcementDetailContent');
+  content.innerHTML = `
+    <div class="announcement-detail-visual type-${esc(item.type)} ${src ? 'has-image' : ''}"${announcementPublicCardStyle(item, src)}>
+      <button type="button" class="announcement-detail-close" data-announcement-detail-close aria-label="Fechar">×</button>
+      <span class="announcement-public-type ${esc(item.type)}">${announcementTypeIcon(item.type)} ${esc(announcementTypeLabel(item.type))}</span>
+      <h2 id="announcementDetailTitle">${esc(item.title)}</h2>
+      <p>${esc(item.description)}</p>
+    </div>
+    <div class="announcement-detail-body">
+      <strong>Período de exibição</strong>
+      <p>${esc(announcementPeriodText(item))}</p>
+      <div class="announcement-detail-footer">
+        <small>Publicado pela ${esc(arena?.name || 'arena')}.</small>
+        ${item.linkUrl ? `<a href="${esc(item.linkUrl)}" target="_blank" rel="noopener noreferrer">${esc(item.ctaLabel)} →</a>` : ''}
+      </div>
+    </div>`;
+  $('#announcementDetailDialog').showModal();
+}
+
+function clearAnnouncementImagePreview() {
+  clearAnnouncementImagePreviewObjectUrl();
+  const preview = $('#announcementImagePreview');
+  if (preview) preview.innerHTML = '<span aria-hidden="true">◇</span><small>Prévia do banner</small>';
+}
+
+function currentAnnouncementFormImage() {
+  const file = $('#announcementImage')?.files?.[0];
+  if (file) {
+    clearAnnouncementImagePreviewObjectUrl();
+    announcementImagePreviewObjectUrl = URL.createObjectURL(file);
+    return announcementImagePreviewObjectUrl;
+  }
+  const item = arenaAnnouncements.find((candidate) => candidate.id === announcementEditingId);
+  return announcementImageUrl(item);
+}
+
+function renderAnnouncementFormPreview() {
+  const target = $('#announcementLivePreview');
+  if (!target) return;
+  const title = $('#announcementTitle')?.value.trim() || 'Sua novidade aparece aqui';
+  const description = $('#announcementDescription')?.value.trim() || 'Use uma mensagem curta para chamar a atenção dos jogadores.';
+  const type = $('#announcementType')?.value || 'promotion';
+  const src = currentAnnouncementFormImage();
+  target.innerHTML = `<div class="announcement-preview-card ${src ? 'has-image' : ''}"${src ? ` style="background-image:url('${esc(src)}')"` : ''}>
+    <span class="announcement-public-type ${esc(type)}">${announcementTypeIcon(type)} ${esc(announcementTypeLabel(type))}</span>
+    <strong>${esc(title)}</strong>
+    <p>${esc(description)}</p>
+  </div>`;
+  const imagePreview = $('#announcementImagePreview');
+  if (imagePreview) {
+    imagePreview.innerHTML = src
+      ? `<img src="${esc(src)}" alt="Prévia da imagem da novidade" data-announcement-image>`
+      : '<span aria-hidden="true">◇</span><small>Prévia do banner</small>';
+  }
+  const descriptionCount = $('#announcementDescriptionCount');
+  if (descriptionCount) descriptionCount.textContent = String($('#announcementDescription')?.value.length || 0);
+}
+
+function openAnnouncementDialog(id = null) {
+  if (!isAdmin || !arena) return;
+  announcementEditingId = id;
+  const item = arenaAnnouncements.find((candidate) => candidate.id === id) || null;
+  const form = $('#announcementForm');
+  form.reset();
+  clearAnnouncementImagePreview();
+
+  const now = new Date();
+  const weekLater = new Date(now);
+  weekLater.setDate(weekLater.getDate() + 7);
+
+  $('#announcementDialogTitle').textContent = item ? 'Editar novidade / aviso' : 'Nova novidade / aviso';
+  $('#announcementDialogIntro').textContent = item
+    ? 'Atualize as informações que aparecem para os clientes da sua arena.'
+    : 'Crie um destaque para aparecer no início da página pública da sua arena.';
+  $('#announcementTitle').value = item?.title || '';
+  $('#announcementDescription').value = item?.description || '';
+  $('#announcementType').value = item?.type || 'promotion';
+  $('#announcementCtaLabel').value = item?.ctaLabel || 'Ver detalhes';
+  $('#announcementStartsOn').value = item?.startsOn || localDate(now);
+  $('#announcementEndsOn').value = item?.endsOn || localDate(weekLater);
+  $('#announcementLinkUrl').value = item?.linkUrl || '';
+  $('#announcementFeatured').checked = Boolean(item?.isFeatured);
+  $('#announcementImage').value = '';
+  $('#announcementError').textContent = '';
+  $('#submitAnnouncement').textContent = item ? 'Salvar alterações' : 'Publicar novidade';
+  renderAnnouncementFormPreview();
+  $('#announcementDialog').showModal();
+}
+
+async function uploadAnnouncementImage(item, file) {
+  if (!arena || !item || !file) return item?.imagePath || null;
+  const allowedTypes = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp'
+  };
+  const extension = allowedTypes[file.type];
+  if (!extension) throw new Error('Use uma imagem JPG, PNG ou WebP.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('A imagem deve ter no máximo 5 MB.');
+
+  const previousPath = item.imagePath || null;
+  const uniquePart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${arena.id}/${item.id}/${uniquePart}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('announcement-images')
+    .upload(path, file, { cacheControl: '3600', contentType: file.type, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { error: updateError } = await supabase
+    .from('arena_announcements')
+    .update({ image_path: path })
+    .eq('id', item.id)
+    .eq('arena_id', arena.id);
+  if (updateError) {
+    await supabase.storage.from('announcement-images').remove([path]);
+    throw updateError;
+  }
+
+  if (previousPath && previousPath !== path) {
+    const { error: removeError } = await supabase.storage.from('announcement-images').remove([previousPath]);
+    if (removeError) console.warn('Não foi possível remover a imagem anterior da novidade.', removeError);
+  }
+  return path;
+}
+
+async function deactivateOtherFeaturedAnnouncements(exceptId = '') {
+  if (!arena) return;
+  let query = supabase
+    .from('arena_announcements')
+    .update({ is_featured: false })
+    .eq('arena_id', arena.id)
+    .eq('active', true)
+    .eq('is_featured', true);
+  if (exceptId) query = query.neq('id', exceptId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
 async function setView(nextView) {
-  if (!['admin', 'finance', 'inventory', 'settings', 'master', 'player'].includes(nextView)) return;
+  if (!['admin', 'finance', 'inventory', 'announcements', 'settings', 'master', 'player'].includes(nextView)) return;
 
   if (nextView === 'master') {
     if (!isPlatformAdmin) return;
@@ -2258,7 +2683,7 @@ async function setView(nextView) {
 
   if (nextView !== 'player' && !isAdmin) return;
   if (nextView === 'player' && isAdmin) return;
-  if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory' || nextView === 'settings') && !arena) return;
+  if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory' || nextView === 'announcements' || nextView === 'settings') && !arena) return;
 
   if (nextView === 'settings') {
     view = 'settings';
@@ -2274,6 +2699,21 @@ async function setView(nextView) {
     return;
   }
 
+  if (nextView === 'announcements') {
+    view = 'announcements';
+    announcementsLoading = true;
+    render();
+    try {
+      await loadAnnouncementsData();
+    } catch (error) {
+      console.error(error);
+      toast('Não foi possível carregar as novidades. Tente novamente.');
+    } finally {
+      announcementsLoading = false;
+      render();
+    }
+    return;
+  }
   if (nextView === 'inventory') {
     view = 'inventory';
     inventoryLoading = true;
@@ -2334,13 +2774,18 @@ function render() {
 
   const masterMode = view === 'master' && isPlatformAdmin;
   const inventoryMode = view === 'inventory' && isAdmin && Boolean(arena);
+  const announcementsMode = view === 'announcements' && isAdmin && Boolean(arena);
   const settingsMode = view === 'settings' && isAdmin && Boolean(arena);
   const masterPanel = $('#masterPanel');
   const merchandisePanel = $('#merchandisePanel');
+  const announcementsPanel = $('#announcementsPanel');
+  const publicAnnouncementsPanel = $('#arenaAnnouncementsPublic');
   const settingsPanel = $('#arenaSettingsPanel');
   const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
   if (merchandisePanel) merchandisePanel.classList.toggle('hidden', !inventoryMode);
+  if (announcementsPanel) announcementsPanel.classList.toggle('hidden', !announcementsMode);
+  if (publicAnnouncementsPanel) publicAnnouncementsPanel.classList.add('hidden');
   if (settingsPanel) settingsPanel.classList.toggle('hidden', !settingsMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
 
@@ -2389,6 +2834,24 @@ function render() {
     return;
   }
 
+  if (announcementsMode) {
+    document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'announcements'));
+    $('#crumb').textContent = 'Novidades e avisos';
+    $('#eyebrow').textContent = 'COMUNICAÇÃO DA ARENA';
+    $('#title').textContent = 'Novidades e avisos';
+    $('#subtitle').textContent = 'Divulgue promoções, eventos e comunicados diretamente para os jogadores.';
+    $('#newBooking').classList.add('hidden');
+    $('#blockSchedule').classList.add('hidden');
+    $('#stats').classList.add('hidden');
+    document.querySelector('.workspace').classList.add('hidden');
+    $('#blockPanel').classList.add('hidden');
+    $('#bottom').hidden = true;
+    $('#bottom').style.display = 'none';
+    const profitPanel = $('#profitPanel');
+    if (profitPanel) { profitPanel.style.display = 'none'; profitPanel.innerHTML = ''; }
+    renderAnnouncementsPanel();
+    return;
+  }
   if (inventoryMode) {
     document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === 'inventory'));
     $('#crumb').textContent = 'Mercadorias';
@@ -2448,6 +2911,7 @@ function render() {
     if (partnerSpotlight) partnerSpotlight.classList.toggle('hidden', Boolean(unavailableArenaStatus));
     const merchandisePanel = $('#merchandisePanel');
     if (merchandisePanel) merchandisePanel.classList.add('hidden');
+    if (publicAnnouncementsPanel) { publicAnnouncementsPanel.classList.add('hidden'); publicAnnouncementsPanel.innerHTML = ''; }
 
     const profitPanel = $('#profitPanel');
     if (profitPanel) {
@@ -2464,6 +2928,7 @@ function render() {
   }
 
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
+  renderPublicAnnouncements();
   $('#stats').classList.remove('hidden');
   $('#courtFilter').disabled = false;
   $('#date').disabled = false;
@@ -3480,6 +3945,7 @@ async function leaveAdminSession() {
   }
   await syncBookingsRealtime();
   await refreshBookings(false);
+  if (arena) await loadPublicAnnouncements();
   await loadArenaCatalog();
   render();
 }
@@ -4023,6 +4489,9 @@ async function switchArena(nextSlug, { silent = false } = {}) {
     const bookingsLoaded = await loadBookings();
     if (!bookingsLoaded || changeVersion !== arenaChangeVersion) return;
 
+    await loadPublicAnnouncements();
+    if (changeVersion !== arenaChangeVersion) return;
+
     await syncBookingsRealtime();
     if (changeVersion !== arenaChangeVersion) return;
 
@@ -4337,6 +4806,214 @@ $('#arenaSettingsContent').addEventListener('submit', (event) => {
   }
 });
 
+$('#announcementsPanel').addEventListener('click', async (event) => {
+  const filterButton = event.target.closest('[data-announcement-filter]');
+  if (filterButton) {
+    announcementFilter = filterButton.dataset.announcementFilter;
+    renderAnnouncementsPanel();
+    return;
+  }
+
+  if (event.target.closest('[data-announcement-new]')) {
+    openAnnouncementDialog();
+    return;
+  }
+
+  const editButton = event.target.closest('[data-announcement-edit]');
+  if (editButton) {
+    openAnnouncementDialog(editButton.dataset.announcementEdit);
+    return;
+  }
+
+  const toggleButton = event.target.closest('[data-announcement-toggle]');
+  if (toggleButton) {
+    const item = arenaAnnouncements.find((candidate) => candidate.id === toggleButton.dataset.announcementToggle);
+    if (!item || !arena) return;
+    toggleButton.disabled = true;
+    try {
+      const targetActive = !item.active;
+      if (targetActive && item.isFeatured) await deactivateOtherFeaturedAnnouncements(item.id);
+      const { error } = await supabase
+        .from('arena_announcements')
+        .update({ active: targetActive })
+        .eq('id', item.id)
+        .eq('arena_id', arena.id);
+      if (error) throw error;
+      await loadAnnouncementsData();
+      renderAnnouncementsPanel();
+      toast(targetActive ? 'Novidade publicada para o público.' : 'Novidade desativada.');
+    } catch (error) {
+      console.error(error);
+      toast(error.message || 'Não foi possível alterar a publicação.');
+    } finally {
+      toggleButton.disabled = false;
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-announcement-delete]');
+  if (deleteButton) {
+    const item = arenaAnnouncements.find((candidate) => candidate.id === deleteButton.dataset.announcementDelete);
+    if (!item || !arena) return;
+    if (!window.confirm(`Excluir “${item.title}”? Essa novidade deixará de existir e não poderá ser recuperada.`)) return;
+    deleteButton.disabled = true;
+    try {
+      if (item.imagePath) {
+        const { error: imageError } = await supabase.storage.from('announcement-images').remove([item.imagePath]);
+        if (imageError) console.warn('Não foi possível remover a imagem da novidade.', imageError);
+      }
+      const { error } = await supabase
+        .from('arena_announcements')
+        .delete()
+        .eq('id', item.id)
+        .eq('arena_id', arena.id);
+      if (error) throw error;
+      await loadAnnouncementsData();
+      renderAnnouncementsPanel();
+      toast('Novidade excluída.');
+    } catch (error) {
+      console.error(error);
+      toast(error.message || 'Não foi possível excluir a novidade.');
+    } finally {
+      deleteButton.disabled = false;
+    }
+  }
+});
+
+$('#closeAnnouncementDialog').onclick = () => $('#announcementDialog').close();
+$('#cancelAnnouncementDialog').onclick = () => $('#announcementDialog').close();
+$('#announcementDialog').addEventListener('close', () => {
+  announcementEditingId = null;
+  clearAnnouncementImagePreviewObjectUrl();
+});
+$('#announcementDialog').addEventListener('click', (event) => {
+  if (event.target === $('#announcementDialog')) $('#announcementDialog').close();
+});
+
+['announcementTitle', 'announcementDescription', 'announcementType', 'announcementCtaLabel'].forEach((id) => {
+  $('#'+id).addEventListener('input', renderAnnouncementFormPreview);
+  $('#'+id).addEventListener('change', renderAnnouncementFormPreview);
+});
+$('#announcementImage').addEventListener('change', renderAnnouncementFormPreview);
+
+$('#announcementForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!isAdmin || !arena) return;
+
+  const existing = arenaAnnouncements.find((candidate) => candidate.id === announcementEditingId) || null;
+  const title = $('#announcementTitle').value.trim();
+  const description = $('#announcementDescription').value.trim();
+  const type = $('#announcementType').value;
+  const ctaLabel = $('#announcementCtaLabel').value.trim() || 'Ver detalhes';
+  const startsOn = $('#announcementStartsOn').value;
+  const endsOn = $('#announcementEndsOn').value;
+  const linkUrl = $('#announcementLinkUrl').value.trim();
+  const isFeatured = $('#announcementFeatured').checked;
+  const file = $('#announcementImage').files?.[0] || null;
+  const errorElement = $('#announcementError');
+  const submitButton = $('#submitAnnouncement');
+
+  if (endsOn < startsOn) {
+    errorElement.textContent = 'A data de fim não pode ser anterior à data de início.';
+    return;
+  }
+  if (linkUrl && !/^https:\/\//i.test(linkUrl)) {
+    errorElement.textContent = 'O link deve começar com https://.';
+    return;
+  }
+
+  errorElement.textContent = '';
+  submitButton.disabled = true;
+  submitButton.textContent = existing ? 'Salvando...' : 'Publicando...';
+
+  try {
+    const active = existing ? existing.active : true;
+    if (active && isFeatured) await deactivateOtherFeaturedAnnouncements(existing?.id || '');
+
+    const payload = {
+      arena_id: arena.id,
+      announcement_type: type,
+      title,
+      description,
+      link_url: linkUrl || null,
+      cta_label: ctaLabel,
+      starts_on: startsOn,
+      ends_on: endsOn,
+      is_featured: isFeatured,
+      active
+    };
+
+    let saved;
+    if (existing) {
+      const { data, error } = await supabase
+        .from('arena_announcements')
+        .update(payload)
+        .eq('id', existing.id)
+        .eq('arena_id', arena.id)
+        .select('id, arena_id, template_key, announcement_type, title, description, image_path, link_url, cta_label, starts_on, ends_on, is_featured, active, sort_order, created_at, updated_at')
+        .single();
+      if (error) throw error;
+      saved = mapArenaAnnouncement(data);
+    } else {
+      const { data, error } = await supabase
+        .from('arena_announcements')
+        .insert(payload)
+        .select('id, arena_id, template_key, announcement_type, title, description, image_path, link_url, cta_label, starts_on, ends_on, is_featured, active, sort_order, created_at, updated_at')
+        .single();
+      if (error) throw error;
+      saved = mapArenaAnnouncement(data);
+    }
+
+    if (file) await uploadAnnouncementImage(saved, file);
+
+    $('#announcementDialog').close();
+    await loadAnnouncementsData();
+    renderAnnouncementsPanel();
+    toast(existing ? 'Novidade atualizada.' : 'Novidade publicada para o público.');
+  } catch (error) {
+    console.error(error);
+    errorElement.textContent = error.message || 'Não foi possível salvar a novidade.';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = existing ? 'Salvar alterações' : 'Publicar novidade';
+  }
+});
+
+$('#arenaAnnouncementsPublic').addEventListener('click', (event) => {
+  if (event.target.closest('[data-announcement-prev]')) {
+    announcementPublicIndex -= 1;
+    renderPublicAnnouncements();
+    return;
+  }
+  if (event.target.closest('[data-announcement-next]')) {
+    announcementPublicIndex += 1;
+    renderPublicAnnouncements();
+    return;
+  }
+  const detail = event.target.closest('[data-announcement-detail]');
+  if (detail) {
+    renderAnnouncementDetail(detail.dataset.announcementDetail);
+    return;
+  }
+  if (event.target.closest('[data-announcement-schedule]')) {
+    document.querySelector('.workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
+$('#announcementDetailDialog').addEventListener('click', (event) => {
+  if (event.target === $('#announcementDetailDialog') || event.target.closest('[data-announcement-detail-close]')) {
+    $('#announcementDetailDialog').close();
+  }
+});
+
+document.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!image?.matches?.('img[data-announcement-image]')) return;
+  const holder = image.parentElement;
+  if (!holder) return;
+  holder.classList.add('no-image');
+  holder.innerHTML = '<span aria-hidden="true">◇</span><small>Imagem indisponível</small>';
+}, true);
 $('#newArenaForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!isPlatformAdmin) return;
