@@ -190,6 +190,22 @@
   </div>
 </section>
 <section class="merchandise-panel hidden" id="merchandisePanel" aria-label="Gestão de mercadorias"></section>
+<dialog id="masterManageDialog" class="master-manage-dialog" aria-labelledby="masterManageTitle">
+  <div class="master-manage-shell">
+    <header class="master-manage-head">
+      <div class="master-manage-avatar" id="masterManageAvatar"></div>
+      <div class="master-manage-heading"><span class="eyebrow">PAINEL MESTRE / GESTÃO</span><h2 id="masterManageTitle">Arena</h2><small id="masterManageCity"></small></div>
+      <button type="button" class="close" id="closeMasterManage" aria-label="Fechar gestão da arena">×</button>
+    </header>
+    <nav class="master-manage-tabs" aria-label="Seções da arena">
+      <button type="button" data-master-tab="data" class="active">Dados gerais</button>
+      <button type="button" data-master-tab="courts">Quadras</button>
+      <button type="button" data-master-tab="admins">Administradores</button>
+      <button type="button" data-master-tab="history">Histórico</button>
+    </nav>
+    <div class="master-manage-content" id="masterManageContent"></div>
+  </div>
+</dialog>
 <section class="partner-spotlight hidden" id="partnerSpotlight" aria-labelledby="partnerSpotlightTitle">
   <div class="partner-copy">
     <p class="partner-kicker">PARCERIA QUADRA ABERTA</p>

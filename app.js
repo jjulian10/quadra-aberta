@@ -50,6 +50,9 @@ let isAdmin = false;
 let isPlatformAdmin = false;
 let masterArenas = [];
 let masterLoading = false;
+let masterDetail = null;
+let masterTab = 'data';
+let masterCourtEditId = null;
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
@@ -386,7 +389,12 @@ function renderArenaIdentity() {
   const arenaName = arena.name || 'Arena';
   const city = arena.city || 'Porto Velho, RO';
   const select = $('#arenaSelect');
-  if (select) select.value = arena.slug;
+  if (select) {
+    if (![...select.options].some((option) => option.value === arena.slug)) {
+      select.add(new Option(arenaName, arena.slug));
+    }
+    select.value = arena.slug;
+  }
   if ($('#arenaSelectValue')) $('#arenaSelectValue').textContent = arenaName;
   renderArenaPickerOptions();
 
@@ -442,7 +450,9 @@ function renderArenaPickerOptions() {
     </button>
   `;
 
-  const arenaOptions = arenaCatalog.map((item) => {
+  const pickerArenas = arena && !arenaCatalog.some((item) => item.slug === arena.slug)
+    ? [...arenaCatalog, arena] : arenaCatalog;
+  const arenaOptions = pickerArenas.map((item) => {
     const selected = item.slug === activeArenaSlug;
     return `
       <button
@@ -486,7 +496,8 @@ async function loadArenaCatalog() {
   const { data, error } = await supabase
     .from('arenas')
     .select('slug, name, city, address, whatsapp')
-    .eq('active', true);
+    .eq('active', true)
+    .eq('public_listed', true);
 
   if (error) throw error;
 
@@ -500,7 +511,8 @@ async function loadArenaCatalog() {
 
   const select = $('#arenaSelect');
   if (select) {
-    select.innerHTML = '<option value="">Selecione uma arena</option>' + arenaCatalog
+    const selectArenas = arena && !arenaCatalog.some((item) => item.slug === arena.slug) ? [...arenaCatalog, arena] : arenaCatalog;
+    select.innerHTML = '<option value="">Selecione uma arena</option>' + selectArenas
       .map((item) => `<option value="${esc(item.slug)}">${esc(item.name)}</option>`)
       .join('');
     select.value = activeArenaSlug || '';
@@ -641,7 +653,7 @@ function renderMasterPanel() {
   }
 
   list.innerHTML = masterArenas.map((item) => `
-    <article class="master-arena-row">
+    <article class="master-arena-row" data-master-arena="${esc(item.arena_id)}" tabindex="0" role="button" aria-label="Gerenciar ${esc(item.name)}">
       <div class="master-arena-avatar">${esc(arenaInitials(item.name))}</div>
       <div class="master-arena-main">
         <div class="master-arena-title">
@@ -650,6 +662,7 @@ function renderMasterPanel() {
         </div>
         <small>${esc(item.city || 'Porto Velho, RO')}</small>
         <span>${Number(item.court_count || 0)} quadra${Number(item.court_count || 0) === 1 ? '' : 's'} · ${Number(item.bookings_count || 0)} reserva${Number(item.bookings_count || 0) === 1 ? '' : 's'}</span>
+        <span class="master-arena-open">Gerenciar arena →</span>
       </div>
       <div class="master-arena-admin">
         <small>Administrador</small>
@@ -661,6 +674,120 @@ function renderMasterPanel() {
       </div>
     </article>
   `).join('');
+}
+
+const masterLink = (slug) => `${window.location.origin}/?arena=${encodeURIComponent(slug)}`;
+
+async function refreshMasterDetail() {
+  if (!masterDetail) return;
+  const id = masterDetail.arena.id;
+  const { data, error } = await supabase.rpc('get_master_arena_detail', { p_arena_id: id });
+  if (error) throw error;
+  masterDetail = data;
+  renderMasterManage();
+  await loadMasterDashboard();
+  if (view === 'master') renderMasterPanel();
+  await loadArenaCatalog();
+}
+
+async function openMasterManage(id) {
+  if (!isPlatformAdmin) return;
+  const dialog = $('#masterManageDialog');
+  dialog.showModal();
+  $('#masterManageContent').innerHTML = '<div class="master-empty">Carregando gestão da arena...</div>';
+  masterDetail = null;
+  masterTab = 'data';
+  try {
+    const { data, error } = await supabase.rpc('get_master_arena_detail', { p_arena_id: id });
+    if (error) throw error;
+    if (!dialog.open) return;
+    masterDetail = data;
+    renderMasterManage();
+  } catch (error) {
+    console.error(error);
+    $('#masterManageContent').innerHTML = '<div class="master-empty">Não foi possível carregar esta arena. Feche e tente novamente.</div>';
+  }
+}
+
+function masterSectionHeading(title, description, action = '') {
+  return `<div class="master-manage-section-title"><div><h3>${title}</h3><p>${description}</p></div>${action}</div>`;
+}
+
+function describeMasterChange(change) {
+  const details = change.details || {};
+  if (details.email) return details.email;
+  if (change.action === 'court.created') return details.name || '';
+  const before = details.before || {};
+  const after = details.after || {};
+  const labels = change.action === 'arena.updated'
+    ? { name: 'Nome', city: 'Cidade', address: 'Endereço', whatsapp: 'WhatsApp', public_listed: 'Visibilidade' }
+    : { name: 'Nome', sport: 'Modalidade', hourly_price: 'Preço/hora', opening_hour: 'Abertura', closing_hour: 'Fechamento', active: 'Situação' };
+  const display = (key, value) => {
+    if (key === 'public_listed') return value ? 'Pública' : 'Oculta';
+    if (key === 'active') return value ? 'Ativa' : 'Inativa';
+    if (key === 'hourly_price') return money(Number(value));
+    if (key === 'opening_hour' || key === 'closing_hour') return `${value}h`;
+    return String(value ?? '—');
+  };
+  return Object.entries(labels).filter(([key]) => before[key] !== after[key])
+    .map(([key, label]) => `${label}: ${display(key, before[key])} → ${display(key, after[key])}`)
+    .join(' · ');
+}
+
+function renderMasterManage() {
+  if (!masterDetail) return;
+  const { arena: item, courts: allCourts, admins, history: changes } = masterDetail;
+  $('#masterManageTitle').textContent = item.name;
+  $('#masterManageCity').textContent = item.city || '';
+  $('#masterManageAvatar').textContent = arenaInitials(item.name);
+  document.querySelectorAll('[data-master-tab]').forEach((button) => button.classList.toggle('active', button.dataset.masterTab === masterTab));
+  const content = $('#masterManageContent');
+
+  if (masterTab === 'data') {
+    content.innerHTML = `
+      ${masterSectionHeading('Dados da arena', 'Atualize as informações que aparecem na página da arena.')}
+      <form id="masterArenaForm">
+        <div class="master-manage-card">
+          <div class="master-manage-grid"><label>Nome da arena<input name="name" required minlength="2" maxlength="80" value="${esc(item.name)}"></label><label>Cidade<input name="city" required minlength="2" maxlength="80" value="${esc(item.city || '')}"></label></div>
+          <label>Endereço<input name="address" required minlength="5" maxlength="180" value="${esc(item.address || '')}"></label>
+          <label>WhatsApp<input name="whatsapp" required inputmode="tel" value="${esc(formatWhatsapp(item.whatsapp || ''))}"></label>
+        </div>
+        <div class="master-manage-card"><div class="master-manage-inline"><div><strong>Visibilidade pública</strong><small>${item.public_listed ? 'Esta arena aparece na lista pública.' : 'Oculta da lista pública. O link direto continua funcionando.'}</small></div><label class="master-switch" aria-label="Mostrar arena no catálogo"><input name="public_listed" type="checkbox" ${item.public_listed ? 'checked' : ''}><span></span></label></div></div>
+        <div class="master-manage-card"><h3>Link direto</h3><div class="master-manage-link"><span>${esc(masterLink(item.slug))}</span><button type="button" data-master-copy>Copiar</button></div></div>
+        <p class="master-manage-error" role="alert"></p><div class="master-manage-footer"><button class="primary" type="submit">Salvar alterações</button></div>
+      </form>`;
+  } else if (masterTab === 'courts') {
+    const current = allCourts.find((court) => court.id === masterCourtEditId);
+    content.innerHTML = `
+      ${masterSectionHeading('Quadras da arena', 'Edite preços, horários e disponibilidade de cada quadra.', '<button class="secondary" type="button" data-master-new-court>＋ Nova quadra</button>')}
+      <div class="master-manage-list">${allCourts.map((court) => `<div class="master-manage-item"><span class="master-manage-item-icon">▦</span><div class="master-manage-item-copy"><strong>${esc(court.name)} <span class="master-status ${court.active ? 'active' : 'inactive'}">${court.active ? 'Ativa' : 'Inativa'}</span></strong><small>${esc(court.sport)} · ${money(Number(court.hourly_price))}/h · ${court.opening_hour}h–${court.closing_hour}h</small></div><button class="master-manage-quiet" type="button" data-master-edit-court="${esc(court.id)}">Editar</button></div>`).join('')}</div>
+      ${masterCourtEditId !== null ? `<form id="masterCourtForm" class="master-manage-card" style="margin-top:17px"><h3>${current ? 'Editar quadra' : 'Nova quadra'}</h3><div class="master-manage-grid"><label>Nome<input name="name" required minlength="2" maxlength="60" value="${esc(current?.name || '')}"></label><label>Modalidade<input name="sport" required minlength="2" maxlength="60" value="${esc(current?.sport || 'Vôlei')}"></label><label>Preço por hora (R$)<input name="hourly_price" type="number" min="0" step="0.01" required value="${current ? Number(current.hourly_price) : ''}"></label><label>Abre às<input name="opening_hour" type="number" min="0" max="23" required value="${current?.opening_hour ?? 14}"></label><label>Fecha às<input name="closing_hour" type="number" min="1" max="24" required value="${current?.closing_hour ?? 23}"></label></div>${current ? `<div class="master-manage-inline" style="margin-top:16px"><div><strong>Quadra ativa</strong><small>Reservas futuras impedem a desativação ou redução incompatível do horário.</small></div><label class="master-switch" aria-label="Quadra ativa"><input name="active" type="checkbox" ${current.active ? 'checked' : ''}><span></span></label></div>` : '<input name="active" type="hidden" value="true">'}<p class="master-manage-error" role="alert"></p><div class="master-manage-footer"><button class="secondary" type="button" data-master-cancel-court>Cancelar</button><button class="primary" type="submit">Salvar quadra</button></div></form>` : ''}`;
+  } else if (masterTab === 'admins') {
+    content.innerHTML = `
+      ${masterSectionHeading('Acessos administrativos', 'Gerencie quem pode acessar a administração desta arena.')}
+      <div class="master-manage-list">${admins.map((admin) => `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(admin.email))}</span><div class="master-manage-item-copy"><strong>${esc(admin.email)}</strong><small>${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : `<button class="master-manage-quiet" type="button" data-master-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`).join('')}</div>
+      <form id="masterInviteForm" class="master-manage-card" style="margin-top:18px"><h3>Convidar administrador</h3><p class="master-manage-muted">Uma pessoa nova recebe convite por e-mail. Uma conta existente é vinculada com seu acesso atual.</p><label>E-mail do administrador<input name="email" type="email" autocomplete="off" required placeholder="admin@arena.com"></label><p class="master-manage-error" role="alert"></p><div class="master-manage-footer"><button class="primary" type="submit">Enviar convite</button></div></form>`;
+  } else {
+    const labels = { 'arena.updated': 'Dados da arena atualizados', 'court.created': 'Quadra criada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Administrador removido' };
+    content.innerHTML = `${masterSectionHeading('Histórico de alterações', 'Últimas 50 ações realizadas no Painel Mestre.')}
+      ${changes.length ? `<div class="master-manage-history">${changes.map((change) => `<article><strong>${esc(labels[change.action] || change.action)}</strong><small>${new Date(change.created_at).toLocaleString('pt-BR')} · ${esc(change.actor_email || 'Administrador da plataforma')}</small><p>${esc(describeMasterChange(change))}</p></article>`).join('')}</div>` : '<div class="master-empty">Nenhuma alteração registrada até agora.</div>'}`;
+  }
+}
+
+async function runMasterMutation(form, action) {
+  const button = form.querySelector('[type="submit"]');
+  const errorElement = form.querySelector('.master-manage-error');
+  button.disabled = true;
+  errorElement.textContent = '';
+  try {
+    await action();
+    await refreshMasterDetail();
+  } catch (error) {
+    console.error(error);
+    errorElement.textContent = error.message || 'Não foi possível salvar. Tente novamente.';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function getAdminArenaForUser(userId) {
@@ -3634,6 +3761,107 @@ $('#refreshMaster').onclick = async () => {
   }
 };
 
+$('#masterArenaList').addEventListener('click', (event) => {
+  const row = event.target.closest('[data-master-arena]');
+  if (row) openMasterManage(row.dataset.masterArena);
+});
+$('#masterArenaList').addEventListener('keydown', (event) => {
+  const row = event.target.closest('[data-master-arena]');
+  if (row && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    openMasterManage(row.dataset.masterArena);
+  }
+});
+$('#closeMasterManage').onclick = () => $('#masterManageDialog').close();
+$('#masterManageDialog').addEventListener('close', () => { masterDetail = null; masterCourtEditId = null; });
+$('#masterManageDialog').addEventListener('click', (event) => {
+  if (event.target === $('#masterManageDialog')) $('#masterManageDialog').close();
+});
+document.querySelectorAll('[data-master-tab]').forEach((button) => button.addEventListener('click', () => {
+  masterTab = button.dataset.masterTab;
+  masterCourtEditId = null;
+  renderMasterManage();
+}));
+
+$('#masterManageContent').addEventListener('click', async (event) => {
+  if (event.target.closest('[data-master-copy]')) {
+    try { await navigator.clipboard.writeText(masterLink(masterDetail.arena.slug)); toast('Link da arena copiado.'); }
+    catch { toast('Não foi possível copiar o link.'); }
+  }
+  if (event.target.closest('[data-master-new-court]')) {
+    masterCourtEditId = 'new'; renderMasterManage();
+  }
+  const edit = event.target.closest('[data-master-edit-court]');
+  if (edit) { masterCourtEditId = edit.dataset.masterEditCourt; renderMasterManage(); }
+  if (event.target.closest('[data-master-cancel-court]')) { masterCourtEditId = null; renderMasterManage(); }
+  const remove = event.target.closest('[data-master-remove-admin]');
+  if (remove && masterDetail) {
+    const target = masterDetail.admins.find((admin) => admin.user_id === remove.dataset.masterRemoveAdmin);
+    if (!target || !window.confirm(`Remover o acesso de ${target.email} à ${masterDetail.arena.name}?`)) return;
+    remove.disabled = true;
+    try {
+      const { error } = await supabase.rpc('master_remove_admin', {
+        p_arena_id: masterDetail.arena.id, p_user_id: target.user_id
+      });
+      if (error) throw error;
+      await refreshMasterDetail();
+      toast('Acesso administrativo removido.');
+    } catch (error) { console.error(error); toast(error.message || 'Não foi possível remover o acesso.'); }
+    finally { remove.disabled = false; }
+  }
+});
+
+$('#masterManageContent').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!masterDetail) return;
+  const form = event.target;
+  const arenaId = masterDetail.arena.id;
+  if (form.id === 'masterArenaForm') {
+    const values = new FormData(form);
+    const listed = form.elements.public_listed.checked;
+    if (masterDetail.arena.public_listed && !listed &&
+        !window.confirm('Ocultar esta arena do catálogo público? O link direto continuará funcionando.')) return;
+    runMasterMutation(form, async () => {
+      const { error } = await supabase.rpc('master_update_arena', { p_arena_id: arenaId, p_data: {
+        name: String(values.get('name')).trim(), city: String(values.get('city')).trim(),
+        address: String(values.get('address')).trim(), whatsapp: String(values.get('whatsapp')).replace(/\D/g, ''),
+        public_listed: listed
+      } });
+      if (error) throw error;
+      toast('Dados da arena salvos.');
+    });
+  } else if (form.id === 'masterCourtForm') {
+    const current = masterDetail.courts.find((court) => court.id === masterCourtEditId);
+    const values = new FormData(form);
+    const active = current ? form.elements.active.checked : true;
+    if (current?.active && !active && !window.confirm(`Desativar ${current.name}? Reservas futuras impedem essa alteração.`)) return;
+    runMasterMutation(form, async () => {
+      const { error } = await supabase.rpc('master_save_court', { p_arena_id: arenaId,
+        p_court_id: current?.id || null, p_data: {
+          name: String(values.get('name')).trim(), sport: String(values.get('sport')).trim(),
+          hourly_price: Number(values.get('hourly_price')), opening_hour: Number(values.get('opening_hour')),
+          closing_hour: Number(values.get('closing_hour')), active
+        }
+      });
+      if (error) throw error;
+      masterCourtEditId = null;
+      toast('Quadra salva.');
+    });
+  } else if (form.id === 'masterInviteForm') {
+    const email = String(new FormData(form).get('email')).trim().toLowerCase();
+    runMasterMutation(form, async () => {
+      const { data, error } = await supabase.functions.invoke('manage-arena-admin', { body: { arenaId, email } });
+      if (error) {
+        let message = error.message;
+        try { message = (await error.context?.json())?.error || message; } catch {}
+        throw new Error(message);
+      }
+      if (data?.error) throw new Error(data.error);
+      toast(data?.invited ? 'Convite enviado por e-mail.' : 'Administrador vinculado à arena.');
+    });
+  }
+});
+
 $('#newArenaForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!isPlatformAdmin) return;
@@ -4101,7 +4329,7 @@ async function initialize() {
       const pending = readPendingPayment();
       const linkedArena = new URLSearchParams(window.location.search).get('arena');
       const preferredSlug = linkedArena || pending?.arenaSlug;
-      if (preferredSlug && arenaCatalog.some((item) => item.slug === preferredSlug)) {
+      if (preferredSlug) {
         await switchArena(preferredSlug, { silent: true });
       } else {
         activeArenaSlug = '';
