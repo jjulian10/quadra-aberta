@@ -460,6 +460,29 @@ function formatWhatsapp(phone) {
   return phone || '';
 }
 
+function syncMobileArenaSupport() {
+  const support = $('#mobileArenaSupport');
+  const link = $('#mobileArenaSupportLink');
+  const name = $('#mobileArenaSupportName');
+  if (!support || !link || !name) return;
+
+  const arenaWhatsapp = String(arena?.whatsapp || '').replace(/\D/g, '');
+  let digits = arenaWhatsapp;
+  if (digits && digits.length <= 11) digits = '55' + digits;
+
+  const visible = Boolean(arena && !isAdmin && digits);
+  support.hidden = !visible;
+  support.classList.toggle('hidden', !visible);
+
+  if (!visible) return;
+
+  const arenaName = arena.name || 'a arena';
+  const message = `Olá! Não consegui concluir meu agendamento pelo Quadra Aberta na ${arenaName}. Poderia me ajudar?`;
+  link.href = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  link.setAttribute('aria-label', `Falar com ${arenaName} pelo WhatsApp`);
+  name.textContent = arenaName;
+}
+
 function clearArenaIdentity() {
   arena = null;
   courts = [];
@@ -500,6 +523,7 @@ function clearArenaIdentity() {
 
   const footer = $('#arenaFooterContact');
   if (footer) footer.hidden = true;
+  syncMobileArenaSupport();
 }
 
 function renderArenaIdentity() {
@@ -553,6 +577,7 @@ function renderArenaIdentity() {
     footer.hidden = isAdmin;
     footer.classList.toggle('hidden', isAdmin);
   }
+  syncMobileArenaSupport();
 
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = arenaName;
   if ($('#loginIntro')) $('#loginIntro').textContent = `Acesse a agenda, as solicitações e o dashboard financeiro da ${arenaName}.`;
@@ -1544,6 +1569,8 @@ function syncAccessControls() {
     arenaContact.hidden = isAdmin || !arena;
     arenaContact.classList.toggle('hidden', isAdmin || !arena);
   }
+
+  syncMobileArenaSupport();
 
   const arenaTrigger = $('#arenaSelectTrigger');
   if (arenaTrigger) {
