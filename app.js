@@ -265,7 +265,7 @@ const weekdayLabel = (date) => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
-const fullDateLabel = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+const compactDateLabel = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
 
 function premiumCalendarMonthLabel(date) {
   const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -289,7 +289,7 @@ function renderPremiumDatePicker() {
   const year = datePickerCursor.getFullYear();
   const month = datePickerCursor.getMonth();
 
-  triggerValue.textContent = fullDateLabel(day);
+  triggerValue.textContent = compactDateLabel(day);
   monthLabel.textContent = premiumCalendarMonthLabel(datePickerCursor);
 
   const first = new Date(year, month, 1, 12);
@@ -346,7 +346,7 @@ function syncPremiumDatePicker() {
   const triggerValue = $('#datePickerValue');
   if (!dateInput || !trigger || !triggerValue) return;
   dateInput.value = day;
-  triggerValue.textContent = fullDateLabel(day);
+  triggerValue.textContent = compactDateLabel(day);
   trigger.disabled = dateInput.disabled;
   if (trigger.disabled) setPremiumCalendarOpen(false);
 }
