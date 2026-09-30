@@ -3981,3 +3981,35 @@ body.admin-session .header-right .avatar.small{
     display:none;
   }
 }
+
+
+/* DYNAMIC ADMIN IDENTITY 2026-09-30 */
+.admin-user-name{
+  display:none;
+  max-width:180px;
+  margin-left:-7px;
+  margin-right:-11px;
+  overflow:hidden;
+  color:#385047;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.2;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+body.admin-session .admin-user-name:not(.hidden){
+  display:inline-block;
+}
+
+#adminHeaderAvatar{
+  font-weight:700;
+  letter-spacing:-.02em;
+  box-shadow:0 5px 14px rgba(23,60,48,.07);
+}
+
+@media(max-width:900px){
+  body.admin-session .admin-user-name{
+    display:none!important;
+  }
+}
