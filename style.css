@@ -3877,3 +3877,89 @@ body.admin-session .arena-visibility-note{
     display:grid;
   }
 }
+
+
+/* INVENTORY CATALOG FLOW FIX 2026-09-30 */
+/* A lista de produtos faz parte do fluxo do formulário em qualquer largura.
+   Assim nenhum resultado cobre os campos seguintes. */
+#inventoryProductDialog .inventory-product-catalog-field{
+  display:block;
+  position:relative;
+  margin-bottom:16px;
+}
+
+#inventoryProductDialog .inventory-catalog-combobox{
+  position:relative;
+  display:block;
+  min-width:0;
+}
+
+#inventoryProductDialog .inventory-catalog-suggestions{
+  position:static !important;
+  inset:auto !important;
+  z-index:auto;
+  width:100%;
+  max-height:240px;
+  margin:9px 0 0;
+  padding:6px;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid #d6e2d8;
+  border-radius:15px;
+  background:#fff;
+  box-shadow:0 14px 32px rgba(17,45,28,.10);
+}
+
+#inventoryProductDialog .inventory-catalog-suggestions.hidden{
+  display:none !important;
+}
+
+#inventoryProductDialog .inventory-catalog-option{
+  position:relative;
+  min-width:0;
+}
+
+#inventoryProductDialog .inventory-image-field{
+  display:block;
+  position:relative;
+  clear:both;
+  margin-top:18px;
+}
+
+/* O próprio dialog recebe a rolagem; o conteúdo não fica preso ao abrir
+   a lista nem quando o teclado virtual ocupa parte da viewport. */
+#inventoryProductDialog{
+  max-height:calc(100dvh - 16px);
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth;
+}
+
+#inventoryProductDialog #inventoryProductForm{
+  overflow:visible;
+  min-height:max-content;
+}
+
+@media(max-width:720px){
+  #inventoryProductDialog .inventory-catalog-suggestions{
+    max-height:210px;
+  }
+}
+
+@media(max-width:520px){
+  #inventoryProductDialog .inventory-catalog-suggestions{
+    max-height:185px;
+  }
+
+  #inventoryProductDialog .inventory-catalog-option{
+    grid-template-columns:44px minmax(0,1fr);
+  }
+
+  #inventoryProductDialog .inventory-catalog-option>span:last-child{
+    display:none;
+  }
+}
