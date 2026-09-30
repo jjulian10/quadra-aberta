@@ -3320,6 +3320,7 @@ function syncBookingCreateSummary() {
   const court = courts[courtIndex] || null;
   const totalAmount = court ? Number(court.price || 0) * duration : 0;
 
+  if ($('#bookingSummaryArena')) $('#bookingSummaryArena').textContent = arena.name || 'Arena';
   if ($('#bookingSummaryDate')) $('#bookingSummaryDate').textContent = bookingFullDateLabel(day);
   if ($('#bookingSummaryWeekday')) $('#bookingSummaryWeekday').textContent = weekdayLabel(day);
   if ($('#bookingSummaryHour')) {
