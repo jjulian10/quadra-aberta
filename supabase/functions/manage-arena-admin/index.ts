@@ -30,8 +30,16 @@ Deno.serve(async (req: Request) => {
   try { input = await req.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
   const arenaId = String(input?.arenaId || "");
   const email = String(input?.email || "").trim().toLowerCase();
+  const name = String(input?.name || "").trim().replace(/\s+/g, " ");
+  const phone = String(input?.phone || "").replace(/\D/g, "");
   if (!/^[0-9a-f-]{36}$/i.test(arenaId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return json({ error: "Informe uma arena e um e-mail válidos." }, 400);
+  }
+  if (name.length < 2 || name.length > 80) {
+    return json({ error: "Informe o nome do administrador." }, 400);
+  }
+  if (!/^\d{10,13}$/.test(phone)) {
+    return json({ error: "Informe um celular válido com DDD." }, 400);
   }
 
   const { data: arena, error: arenaError } = await service.from("arenas")
@@ -65,10 +73,21 @@ Deno.serve(async (req: Request) => {
   let invited = false;
   if (!target) {
     const redirectTo = (Deno.env.get("PUBLIC_SITE_URL") || "https://quadra-aberta.vercel.app").replace(/\/$/, "") + "/";
-    const { data, error } = await service.auth.admin.inviteUserByEmail(email, { redirectTo });
+    const { data, error } = await service.auth.admin.inviteUserByEmail(email, {
+      redirectTo,
+      data: { full_name: name, phone },
+    });
     if (error || !data.user) return json({ error: error?.message || "Não foi possível enviar o convite." }, 400);
     target = data.user;
     invited = true;
+  }
+
+  if (target) {
+    const currentMetadata = target.user_metadata || {};
+    const { error: metadataError } = await service.auth.admin.updateUserById(target.id, {
+      user_metadata: { ...currentMetadata, full_name: name, phone },
+    });
+    if (metadataError) return json({ error: "Não foi possível salvar o perfil do administrador." }, 400);
   }
 
   const caller = createClient(url, anonKey, {
@@ -82,5 +101,17 @@ Deno.serve(async (req: Request) => {
     if (invited) await service.auth.admin.deleteUser(target.id);
     return json({ error: linkError.message || "Não foi possível vincular o administrador." }, 400);
   }
-  return json({ ok: true, invited, email });
+
+  const { error: profileError } = await service
+    .from("arena_admins")
+    .update({ display_name: name, phone })
+    .eq("arena_id", arenaId)
+    .eq("user_id", target.id);
+  if (profileError) {
+    await service.from("arena_admins").delete().eq("arena_id", arenaId).eq("user_id", target.id);
+    if (invited) await service.auth.admin.deleteUser(target.id);
+    return json({ error: "Não foi possível salvar o perfil do administrador." }, 500);
+  }
+
+  return json({ ok: true, invited, email, name, phone });
 });
