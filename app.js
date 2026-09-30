@@ -3295,6 +3295,59 @@ $('#waitlistForm').addEventListener('submit', async (event) => {
   }
 });
 
+function bookingFullDateLabel(value) {
+  return new Date(value + 'T12:00:00').toLocaleDateString('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function setBookingCreateMode(enabled) {
+  const form = $('#bookingForm');
+  if (!form) return;
+  form.classList.toggle('booking-create-mode', enabled);
+}
+
+function syncBookingCreateSummary() {
+  const summary = $('#bookingCreateSummary');
+  if (!summary || !arena) return;
+
+  const courtIndex = Number($('#bookingCourt')?.value || 0);
+  const duration = Math.max(1, Number($('#bookingDuration')?.value || 1));
+  const rawHour = $('#bookingHour')?.value ?? '';
+  const hour = rawHour === '' ? null : Number(rawHour);
+  const court = courts[courtIndex] || null;
+  const totalAmount = court ? Number(court.price || 0) * duration : 0;
+
+  if ($('#bookingSummaryDate')) $('#bookingSummaryDate').textContent = bookingFullDateLabel(day);
+  if ($('#bookingSummaryWeekday')) $('#bookingSummaryWeekday').textContent = weekdayLabel(day);
+  if ($('#bookingSummaryHour')) {
+    $('#bookingSummaryHour').textContent = Number.isFinite(hour)
+      ? `${String(hour).padStart(2, '0')}:00 – ${String(hour + duration).padStart(2, '0')}:00`
+      : 'Sem horário disponível';
+  }
+  if ($('#bookingSummaryDuration')) {
+    $('#bookingSummaryDuration').textContent = `${duration} hora${duration > 1 ? 's' : ''}`;
+  }
+  if ($('#bookingSummaryCourt')) {
+    $('#bookingSummaryCourt').textContent = court
+      ? `${court.name}${court.sport ? ' · ' + court.sport : ''}`
+      : '—';
+  }
+  if ($('#bookingSummaryTotal')) $('#bookingSummaryTotal').textContent = money(totalAmount);
+  if ($('#bookingSummaryTotalCaption')) {
+    $('#bookingSummaryTotalCaption').textContent = `${duration} hora${duration > 1 ? 's' : ''} de quadra`;
+  }
+
+  const securityText = summary.querySelector('.booking-summary-security p');
+  if (securityText) {
+    securityText.textContent = view === 'admin'
+      ? 'A reserva será adicionada diretamente à agenda da arena.'
+      : 'O horário será confirmado automaticamente após o pagamento do sinal via Pix.';
+  }
+}
+
 function updateHours(preferred) {
   const court = Number($('#bookingCourt').value);
   const duration = Number($('#bookingDuration').value);
@@ -3311,6 +3364,7 @@ function updateHours(preferred) {
     const currentPaid = Number(paidInput.value || 0);
     if (currentPaid > totalAmount) paidInput.value = totalAmount.toFixed(2);
   }
+  syncBookingCreateSummary();
   $('#submitBooking').disabled = !free.length;
 }
 
@@ -3318,6 +3372,7 @@ function openBooking(court = 0, hour, duration = 1) {
   clearInterval(paymentPollTimer);
   selectedId = null;
   $('#bookingForm').reset();
+  setBookingCreateMode(true);
   $('#formError').textContent = '';
   $('#formFields').hidden = false;
   $('#customerEmailLabel').classList.toggle('hidden', view === 'admin');
@@ -3330,11 +3385,12 @@ function openBooking(court = 0, hour, duration = 1) {
     : 'O horário será confirmado automaticamente após o pagamento do sinal via Pix.';
   $('#detailContent').innerHTML = '';
   $('#dialogTitle').textContent = view === 'admin' ? 'Nova reserva' : 'Reservar horário';
-  $('#dialogInfo').textContent = `${labelDate(day)} · ${arena.name}`;
+  $('#dialogInfo').textContent = `${bookingFullDateLabel(day)} · ${weekdayLabel(day)}`;
   $('#bookingCourt').value = String(court);
   $('#bookingDuration').value = String(duration);
   $('#dialogActions').innerHTML = `<button class="primary" type="submit" id="submitBooking">${view === 'admin' ? 'Confirmar reserva' : 'Gerar Pix de R$ 0,01'}</button>`;
   updateHours(hour);
+  syncBookingCreateSummary();
   $('#bookingDialog').showModal();
 }
 
@@ -3365,6 +3421,7 @@ function openBlockDialog(court = filter === 'all' ? 'all' : filter, hour) {
 }
 
 function openDetail(id) {
+  setBookingCreateMode(false);
   const booking = bookings.find((item) => item.id === id);
   if (!booking || view !== 'admin') return;
 
@@ -3542,6 +3599,7 @@ function openArenaSupport(booking = lastPlayerBooking) {
 }
 
 function showConfirmation(booking) {
+  setBookingCreateMode(false);
   if (booking.arenaSlug && booking.arenaSlug !== arena?.slug) return;
   clearInterval(paymentPollTimer);
   if (readPendingPayment()?.id === booking.id) clearPendingPayment();
@@ -3644,6 +3702,7 @@ function resumePendingPayment() {
 }
 
 function showPixPayment(booking) {
+  setBookingCreateMode(false);
   if (booking.arenaSlug && booking.arenaSlug !== arena?.slug) return;
   lastPlayerBooking = booking;
   $('#formFields').hidden = true;
@@ -4075,6 +4134,7 @@ $('#backCancelBooking').onclick = () => closeCancellationDialog(true);
 
 $('#bookingCourt').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
 $('#bookingDuration').addEventListener('change', () => updateHours(Number($('#bookingHour').value)));
+$('#bookingHour').addEventListener('change', syncBookingCreateSummary);
 $('#closeDialog').onclick = () => { clearInterval(paymentPollTimer); $('#bookingDialog').close(); };
 $('#newBooking').onclick = () => {
   if (!arena) {
