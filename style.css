@@ -4496,3 +4496,306 @@ body.admin-session .admin-user-name:not(.hidden){
     transition:none!important;
   }
 }
+
+
+/* PREMIUM ARENA CONTACT CARD 2026-09-30 */
+.arena-footer-contact{
+  position:relative;
+  isolation:isolate;
+  width:100%;
+  padding:14px;
+  overflow:hidden;
+  border:1px solid rgba(160,221,170,.20);
+  border-radius:17px;
+  background:
+    radial-gradient(circle at 8% 10%,rgba(116,208,139,.12),transparent 26%),
+    radial-gradient(circle at 92% 86%,rgba(49,148,98,.10),transparent 34%),
+    linear-gradient(145deg,rgba(10,63,46,.90),rgba(13,73,51,.76));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 14px 30px rgba(2,31,22,.13);
+  display:grid;
+  gap:9px;
+  animation:arenaContactEnter .34s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.arena-footer-contact::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background:linear-gradient(120deg,transparent 0 38%,rgba(255,255,255,.035) 48%,transparent 58% 100%);
+  transform:translateX(-70%);
+  animation:arenaContactSheen 7s ease-in-out infinite;
+}
+
+.arena-footer-contact::after{
+  content:"";
+  position:absolute;
+  right:-34px;
+  top:-36px;
+  width:110px;
+  height:110px;
+  z-index:-1;
+  border:1px solid rgba(151,231,167,.09);
+  border-radius:50%;
+  box-shadow:0 0 0 16px rgba(151,231,167,.025);
+  pointer-events:none;
+}
+
+.arena-footer-contact:not([hidden]){
+  margin-top:auto;
+}
+
+.arena-footer-contact:not([hidden]) + .aside-bottom{
+  margin-top:13px;
+}
+
+.arena-footer-contact[hidden]{
+  display:none!important;
+}
+
+.arena-contact-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:1px 2px 2px;
+}
+
+.arena-contact-label{
+  color:#a8c8b7;
+  font-size:8.5px;
+  font-weight:800;
+  letter-spacing:.16em;
+  line-height:1.2;
+}
+
+.arena-contact-live{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  color:#8fb3a0;
+  font-size:7.5px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+.arena-contact-live i{
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#9be46b;
+  box-shadow:0 0 0 4px rgba(155,228,107,.08),0 0 12px rgba(155,228,107,.30);
+  animation:arenaContactPulse 2.4s ease-in-out infinite;
+}
+
+.arena-contact-action{
+  position:relative;
+  display:grid!important;
+  grid-template-columns:34px minmax(0,1fr) 22px;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  padding:11px 9px 11px 10px;
+  overflow:hidden;
+  border:1px solid rgba(182,225,190,.10);
+  border-radius:13px;
+  background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018));
+  color:#eaf5ee;
+  text-decoration:none!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  transition:
+    transform .2s ease,
+    border-color .2s ease,
+    background .2s ease,
+    box-shadow .2s ease;
+}
+
+.arena-contact-action::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(100deg,transparent,rgba(165,238,177,.055),transparent);
+  opacity:0;
+  transform:translateX(-45%);
+  transition:opacity .2s ease,transform .38s ease;
+}
+
+.arena-contact-action:hover{
+  transform:translateY(-2px);
+  border-color:rgba(155,229,169,.27);
+  background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(108,207,130,.035));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 9px 20px rgba(2,31,22,.11);
+}
+
+.arena-contact-action:hover::before{
+  opacity:1;
+  transform:translateX(45%);
+}
+
+.arena-contact-action:active{
+  transform:translateY(0) scale(.988);
+}
+
+.arena-contact-action:focus-visible{
+  outline:2px solid rgba(178,242,160,.55);
+  outline-offset:2px;
+}
+
+.arena-contact-icon{
+  display:grid;
+  place-items:center;
+  width:34px;
+  height:34px;
+  border:1px solid rgba(157,221,169,.16);
+  border-radius:11px;
+  background:linear-gradient(145deg,rgba(37,142,89,.28),rgba(19,98,65,.20));
+  color:#82dea1;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 7px 15px rgba(3,36,25,.12);
+  transition:transform .2s ease,background .2s ease,color .2s ease,box-shadow .2s ease;
+}
+
+.arena-contact-icon svg{
+  width:17px;
+  height:17px;
+}
+
+.arena-contact-whatsapp-icon{
+  color:#9ceb88;
+  background:linear-gradient(145deg,rgba(38,167,93,.33),rgba(16,105,62,.24));
+}
+
+.arena-contact-action:hover .arena-contact-icon{
+  transform:scale(1.055) rotate(-2deg);
+  color:#b2f2a0;
+  background:linear-gradient(145deg,rgba(54,173,103,.37),rgba(23,111,70,.26));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.075),
+    0 9px 18px rgba(3,36,25,.15);
+}
+
+.arena-contact-copy{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.arena-contact-copy strong{
+  display:-webkit-box;
+  overflow:hidden;
+  color:#f3f8f5;
+  font-size:10.5px;
+  font-weight:800;
+  line-height:1.32;
+  letter-spacing:-.005em;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+
+.arena-contact-copy small{
+  color:#78bd91!important;
+  font-size:8.5px!important;
+  font-weight:700;
+  line-height:1.2!important;
+}
+
+.arena-contact-arrow{
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border:1px solid rgba(162,219,171,.10);
+  border-radius:50%;
+  background:rgba(255,255,255,.025);
+  color:#cce2d4;
+  font-size:20px;
+  font-weight:300;
+  line-height:1;
+  transition:transform .2s ease,background .2s ease,color .2s ease;
+}
+
+.arena-contact-action:hover .arena-contact-arrow{
+  transform:translateX(2px);
+  background:rgba(131,218,151,.08);
+  color:#a9ef98;
+}
+
+.arena-footer-contact .arena-phone{
+  margin-top:0;
+  color:inherit;
+  font-size:inherit;
+  font-weight:inherit;
+  line-height:inherit;
+}
+
+@keyframes arenaContactEnter{
+  from{opacity:0;transform:translateY(8px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
+@keyframes arenaContactPulse{
+  0%,100%{opacity:.65;transform:scale(.9)}
+  50%{opacity:1;transform:scale(1.12)}
+}
+
+@keyframes arenaContactSheen{
+  0%,72%,100%{transform:translateX(-75%)}
+  82%{transform:translateX(75%)}
+}
+
+@media(max-height:760px) and (min-width:801px){
+  .arena-footer-contact{
+    padding:11px;
+    gap:7px;
+    border-radius:15px;
+  }
+  .arena-contact-heading{
+    display:none;
+  }
+  .arena-contact-action{
+    grid-template-columns:30px minmax(0,1fr) 20px;
+    gap:8px;
+    padding:9px 8px;
+  }
+  .arena-contact-icon{
+    width:30px;
+    height:30px;
+    border-radius:9px;
+  }
+  .arena-contact-icon svg{
+    width:15px;
+    height:15px;
+  }
+  .arena-contact-copy strong{
+    font-size:9.5px;
+  }
+  .arena-contact-copy small{
+    font-size:8px!important;
+  }
+}
+
+@media(max-width:800px){
+  .arena-footer-contact{
+    display:none!important;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .arena-footer-contact,
+  .arena-footer-contact::before,
+  .arena-contact-live i,
+  .arena-contact-action,
+  .arena-contact-icon,
+  .arena-contact-arrow{
+    animation:none!important;
+    transition:none!important;
+  }
+}
