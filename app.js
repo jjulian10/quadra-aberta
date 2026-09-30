@@ -523,19 +523,28 @@ function renderArenaIdentity() {
   if ($('#arenaAvatar')) $('#arenaAvatar').textContent = arenaInitials(arenaName);
   if ($('#arenaCity')) $('#arenaCity').textContent = city;
 
+  const addressText = arena.address || city;
   const address = $('#arenaAddress');
+  const addressLink = $('#arenaAddressLink');
   if (address) {
-    address.textContent = arena.address || city;
+    address.textContent = addressText;
     address.hidden = false;
+  }
+  if (addressLink) {
+    const mapQuery = arena.address ? `${arena.address}, ${city}` : `${arenaName}, ${city}`;
+    addressLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+    addressLink.setAttribute('aria-label', `Abrir ${addressText} no mapa`);
   }
 
   const phoneLink = $('#arenaPhone');
+  const phoneLabel = $('#arenaPhoneLabel');
   const whatsappDigits = arenaWhatsappDigits();
   if (phoneLink) {
     phoneLink.hidden = !whatsappDigits;
     if (whatsappDigits) {
       phoneLink.href = `https://wa.me/${whatsappDigits}`;
-      phoneLink.textContent = `${formatWhatsapp(arena.whatsapp || whatsappDigits)} · WhatsApp`;
+      phoneLink.setAttribute('aria-label', `Falar com ${arenaName} pelo WhatsApp`);
+      if (phoneLabel) phoneLabel.textContent = `${formatWhatsapp(arena.whatsapp || whatsappDigits)} · WhatsApp`;
     }
   }
 
