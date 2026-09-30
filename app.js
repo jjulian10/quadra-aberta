@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createAdminNotifications } from './notifications.js';
 import { togglePush, promptInstall, rememberReservationForInstall, consumeInstalledReservation, showBookingConfirmationNotification } from './push.js';
 import { pushInvite, refreshPushInvites } from './push-onboarding.js';
+import { settingsIcon, settingsField, settingsHeading, settingsFooter, updateSettingsVisibility } from './arena-settings-ui.js';
 import {
   ARENA_SLUG,
   ARENA_SUPPORT_WHATSAPP,
@@ -874,45 +875,82 @@ async function loadArenaSettings() {
 function renderArenaSettings() {
   if (!isAdmin || !arena || view !== 'settings') return;
   const target = $('#arenaSettingsContent');
-  document.querySelectorAll('[data-settings-tab]').forEach((button) =>
-    button.classList.toggle('active', button.dataset.settingsTab === settingsTab));
+  document.querySelectorAll('[data-settings-tab]').forEach((button) => {
+    const selected = button.dataset.settingsTab === settingsTab;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-current', selected ? 'true' : 'false');
+    button.querySelector('span').innerHTML = settingsIcon({ data: 'arena', courts: 'court', admins: 'people', history: 'history' }[button.dataset.settingsTab]);
+  });
   if (!arenaSettingsDetail) {
     target.innerHTML = '<div class="master-empty">Carregando configurações da arena...</div>';
     return;
   }
   const { arena: item, courts: allCourts, admins, history: changes } = arenaSettingsDetail;
   if (settingsTab === 'data') {
-    target.innerHTML = `<form id="arenaSettingsForm">
-      <div class="arena-settings-grid"><div class="arena-settings-card"><h3>Informações da arena</h3><p>Mantenha os dados principais sempre atualizados.</p>
-        <div class="master-manage-grid"><label>Nome da arena<input name="name" required minlength="2" maxlength="80" value="${esc(item.name)}"></label><label>Cidade<input name="city" required minlength="2" maxlength="80" value="${esc(item.city || '')}"></label></div>
-        <label>Endereço<input name="address" required minlength="5" maxlength="180" value="${esc(item.address || '')}"></label>
-        <label>WhatsApp da arena<input name="whatsapp" required inputmode="tel" value="${esc(formatWhatsapp(item.whatsapp || ''))}"></label>
-      </div><div class="arena-settings-stack"><div class="arena-settings-card"><h3>Visibilidade da agenda</h3><p>Escolha como os jogadores encontram e acessam sua arena.</p>
-        <div class="arena-settings-toggle"><div><strong>Agenda pública</strong><small>Desligada: jogadores não conseguem abrir horários nem fazer novas reservas, mesmo com o link.</small></div><label class="master-switch" aria-label="Permitir acesso público à agenda"><input name="public_access" type="checkbox" ${item.public_access ? 'checked' : ''}><span></span></label></div>
-        <div class="arena-settings-toggle" style="margin-top:10px"><div><strong>Exibir no catálogo</strong><small>Desligada: arena disponível apenas por link direto, enquanto a agenda estiver pública.</small></div><label class="master-switch" aria-label="Mostrar arena no catálogo"><input name="public_listed" type="checkbox" ${item.public_listed ? 'checked' : ''} ${!item.public_access ? 'disabled' : ''}><span></span></label></div>
-        <div class="arena-settings-help ${item.public_access ? '' : 'private'}">${item.public_access ? (item.public_listed ? 'Sua arena aparece na lista pública e também pode ser aberta pelo link.' : 'Sua arena está fora da lista, mas o link direto continua funcionando.') : 'Agenda privada: apenas os administradores podem gerenciar esta arena. Reservas existentes permanecem registradas.'}</div>
-      </div><div class="arena-settings-card"><h3>Link da agenda</h3><p>Compartilhe com os jogadores quando a agenda estiver aberta.</p><div class="master-manage-link"><span>${esc(masterLink(item.slug))}</span><button type="button" data-settings-copy>Copiar</button></div></div></div></div>
-      <p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="primary" type="submit">Salvar alterações</button></div>
+    target.innerHTML = `<form id="arenaSettingsForm" class="arena-settings-grid">
+      <div class="arena-settings-card arena-settings-details">
+        ${settingsHeading('Informações da arena', 'Mantenha os dados principais sempre atualizados.', 'arena', 'Dados da arena')}
+        <div class="arena-settings-fields">
+          <div class="arena-settings-field-grid">
+            ${settingsField('Nome da arena', 'name', item.name, 'arena', 'required minlength="2" maxlength="80" autocomplete="organization"')}
+            ${settingsField('Cidade', 'city', item.city || '', 'pin', 'required minlength="2" maxlength="80" autocomplete="address-level2"')}
+          </div>
+          ${settingsField('Endereço', 'address', item.address || '', 'pin', 'required minlength="5" maxlength="180" autocomplete="street-address"')}
+          ${settingsField('WhatsApp da arena', 'whatsapp', formatWhatsapp(item.whatsapp || ''), 'phone', 'type="tel" required inputmode="tel" autocomplete="tel-national"')}
+        </div>
+      </div>
+      <div class="arena-settings-stack">
+        <div class="arena-settings-card"><h3>Visibilidade da agenda</h3><p>Escolha como os jogadores encontram e acessam sua arena.</p>
+          <div class="arena-settings-toggle"><span class="arena-settings-toggle-icon">${settingsIcon('globe')}</span><div class="arena-settings-toggle-copy"><strong>Agenda pública<span class="arena-settings-state-dot" aria-hidden="true"></span></strong><small data-settings-access-copy></small></div><label class="master-switch" aria-label="Permitir acesso público à agenda"><input name="public_access" type="checkbox" ${item.public_access ? 'checked' : ''}><span></span></label></div>
+          <div class="arena-settings-toggle"><span class="arena-settings-toggle-icon">${settingsIcon('catalog')}</span><div class="arena-settings-toggle-copy"><strong>Exibir no catálogo<span class="arena-settings-state-dot" aria-hidden="true"></span></strong><small data-settings-catalog-copy></small></div><label class="master-switch" aria-label="Mostrar arena no catálogo"><input name="public_listed" type="checkbox" ${item.public_listed ? 'checked' : ''} ${!item.public_access ? 'disabled' : ''}><span></span></label></div>
+          <div class="arena-settings-help" data-settings-visibility-help aria-live="polite">${settingsIcon('info')}<span></span></div>
+        </div>
+        <div class="arena-settings-card arena-settings-share"><h3>Link da agenda</h3><p>Compartilhe com os jogadores quando a agenda estiver aberta.</p><div class="arena-settings-link"><span class="arena-settings-link-icon">${settingsIcon('link')}</span><span class="arena-settings-link-text" title="${esc(masterLink(item.slug))}">${esc(masterLink(item.slug))}</span><button type="button" data-settings-copy>${settingsIcon('copy')}<span>Copiar</span></button></div></div>
+      </div>
+      ${settingsFooter('As alterações ficam registradas no histórico.', `<button class="secondary" type="button" data-settings-reset>Cancelar</button><button class="primary" type="submit">${settingsIcon('check')}<span>Salvar alterações</span></button>`)}
     </form>`;
+    updateSettingsVisibility($('#arenaSettingsForm'));
   } else if (settingsTab === 'courts') {
     const current = allCourts.find((court) => court.id === settingsCourtId);
-    target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Quadras da sua arena</h3><p>Defina valores, modalidade e horário de funcionamento.</p></div><button class="secondary" type="button" data-settings-new-court>＋ Nova quadra</button></div>
-      <div class="arena-settings-list">${allCourts.map((court) => `<div class="master-manage-item"><span class="master-manage-item-icon">▦</span><div class="master-manage-item-copy"><strong>${esc(court.name)} <span class="master-status ${court.active ? 'active' : 'inactive'}">${court.active ? 'Ativa' : 'Inativa'}</span></strong><small>${esc(court.sport)} · ${money(Number(court.hourly_price))}/h · ${court.opening_hour}h–${court.closing_hour}h</small></div><button class="master-manage-quiet" type="button" data-settings-edit-court="${esc(court.id)}">Editar</button></div>`).join('')}</div>
-      ${settingsCourtId !== null ? `<form id="arenaSettingsCourtForm" class="arena-settings-card arena-settings-edit"><h3>${current ? `Editar ${esc(current.name)}` : 'Cadastrar quadra'}</h3><p>As alterações de horário respeitam as reservas futuras.</p><div class="master-manage-grid"><label>Nome<input name="name" required minlength="2" maxlength="60" value="${esc(current?.name || '')}"></label><label>Modalidade<input name="sport" required minlength="2" maxlength="60" value="${esc(current?.sport || 'Vôlei')}"></label><label>Preço por hora (R$)<input name="hourly_price" type="number" min="0" step="0.01" required value="${current ? Number(current.hourly_price) : ''}"></label><label>Abre às<input name="opening_hour" type="number" min="0" max="23" required value="${current?.opening_hour ?? 14}"></label><label>Fecha às<input name="closing_hour" type="number" min="1" max="24" required value="${current?.closing_hour ?? 23}"></label></div>${current ? `<div class="arena-settings-toggle"><div><strong>Quadra ativa</strong><small>Não é possível desativar uma quadra que tenha reservas futuras.</small></div><label class="master-switch" aria-label="Quadra ativa"><input name="active" type="checkbox" ${current.active ? 'checked' : ''}><span></span></label></div>` : ''}<p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="secondary" type="button" data-settings-cancel-court>Cancelar</button><button class="primary" type="submit">Salvar quadra</button></div></form>` : ''}`;
+    target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Quadras da sua arena</h3><p>Defina valores, modalidade e horário de funcionamento.</p></div><button class="secondary" type="button" data-settings-new-court>${settingsIcon('plus')}Nova quadra</button></div>
+      <div class="arena-settings-list">${allCourts.map((court) => `<div class="master-manage-item"><span class="master-manage-item-icon">${settingsIcon('court')}</span><div class="master-manage-item-copy"><strong>${esc(court.name)} <span class="master-status ${court.active ? 'active' : 'inactive'}">${court.active ? 'Ativa' : 'Inativa'}</span></strong><small>${esc(court.sport)} · ${money(Number(court.hourly_price))}/h · ${court.opening_hour}h–${court.closing_hour}h</small></div><button class="master-manage-quiet" type="button" data-settings-edit-court="${esc(court.id)}">${settingsIcon('edit')}Editar</button></div>`).join('')}</div>
+      ${settingsCourtId !== null ? `<form id="arenaSettingsCourtForm" class="arena-settings-card arena-settings-edit">
+        ${settingsHeading(current ? `Editar ${current.name}` : 'Cadastrar quadra', 'As alterações de horário respeitam as reservas futuras.', 'court', 'Estrutura da arena')}
+        <div class="arena-settings-fields"><div class="arena-settings-field-grid">
+          ${settingsField('Nome', 'name', current?.name || '', 'court', 'required minlength="2" maxlength="60"')}
+          ${settingsField('Modalidade', 'sport', current?.sport || 'Vôlei', 'court', 'required minlength="2" maxlength="60"')}
+        </div><div class="arena-settings-field-grid arena-settings-field-grid-three">
+          ${settingsField('Preço por hora (R$)', 'hourly_price', current ? Number(current.hourly_price) : '', 'money', 'type="number" min="0" step="0.01" required inputmode="decimal"')}
+          ${settingsField('Abre às', 'opening_hour', current?.opening_hour ?? 14, 'history', 'type="number" min="0" max="23" required inputmode="numeric"')}
+          ${settingsField('Fecha às', 'closing_hour', current?.closing_hour ?? 23, 'history', 'type="number" min="1" max="24" required inputmode="numeric"')}
+        </div></div>
+        ${current ? `<div class="arena-settings-toggle"><span class="arena-settings-toggle-icon">${settingsIcon('court')}</span><div class="arena-settings-toggle-copy"><strong>Quadra ativa<span class="arena-settings-state-dot" aria-hidden="true"></span></strong><small>Não é possível desativar uma quadra que tenha reservas futuras.</small></div><label class="master-switch" aria-label="Quadra ativa"><input name="active" type="checkbox" ${current.active ? 'checked' : ''}><span></span></label></div>` : ''}
+        ${settingsFooter('Valores e horários serão atualizados na agenda.', `<button class="secondary" type="button" data-settings-cancel-court>Cancelar</button><button class="primary" type="submit">${settingsIcon('check')}<span>Salvar quadra</span></button>`)}
+      </form>` : ''}`;
   } else if (settingsTab === 'admins') {
     target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Administradores da arena</h3><p>Controle os acessos sem compartilhar sua senha.</p></div><span class="arena-settings-badge">${admins.length} acesso${admins.length === 1 ? '' : 's'}</span></div>
       <div class="arena-settings-list">${admins.map((admin) => `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(admin.email))}</span><div class="master-manage-item-copy"><strong>${esc(admin.email)}</strong><small>${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : admin.user_id === currentAdminUserId ? '<span class="master-status active">Você</span>' : `<button class="master-manage-quiet" type="button" data-settings-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`).join('')}</div>
-      <form id="arenaSettingsInviteForm" class="arena-settings-card arena-settings-edit"><h3>Adicionar administrador</h3><p>Uma conta nova recebe convite por e-mail. Uma conta existente mantém sua senha atual.</p><label>E-mail do administrador<input name="email" type="email" autocomplete="off" required placeholder="admin@arena.com"></label><p class="arena-settings-error" role="alert"></p><div class="arena-settings-actions"><button class="primary" type="submit">Enviar convite</button></div></form>`;
+      <form id="arenaSettingsInviteForm" class="arena-settings-card arena-settings-edit">
+        ${settingsHeading('Adicionar administrador', 'Uma conta nova recebe convite por e-mail. Uma conta existente mantém sua senha atual.', 'people', 'Acessos da arena')}
+        <div class="arena-settings-fields">${settingsField('E-mail do administrador', 'email', '', 'mail', 'type="email" autocomplete="off" required placeholder="admin@arena.com"')}</div>
+        ${settingsFooter('Cada administrador utiliza seu próprio acesso.', `<button class="primary" type="submit">${settingsIcon('send')}<span>Enviar convite</span></button>`)}
+      </form>`;
   } else {
-    const labels = { 'arena.updated': 'Informações da arena alteradas', 'court.created': 'Nova quadra cadastrada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Acesso removido' };
-    target.innerHTML = `<div class="arena-settings-card"><h3>Histórico de alterações</h3><p>Últimas 50 ações realizadas nesta arena.</p>${changes.length ? `<div class="master-manage-history">${changes.map((change) => `<article><strong>${esc(labels[change.action] || change.action)}</strong><small>${new Date(change.created_at).toLocaleString('pt-BR')} · ${esc(change.actor_email || 'Administrador')}</small><p>${esc(describeMasterChange(change))}</p></article>`).join('')}</div>` : '<div class="master-empty">Nenhuma alteração registrada até agora.</div>'}</div>`;
+    const labels = { 'arena.updated': 'Informações da arena alteradas', 'arena.suspended': 'Arena suspensa', 'arena.reactivated': 'Arena reativada', 'court.created': 'Nova quadra cadastrada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Acesso removido' };
+    target.innerHTML = `<div class="arena-settings-card">${settingsHeading('Histórico de alterações', 'Últimas 50 ações realizadas nesta arena.', 'history', 'Atividades da arena')}${changes.length ? `<div class="master-manage-history">${changes.map((change) => `<article><strong>${esc(labels[change.action] || change.action)}</strong><small>${new Date(change.created_at).toLocaleString('pt-BR')} · ${esc(change.actor_email || 'Administrador')}</small><p>${esc(describeMasterChange(change))}</p></article>`).join('')}</div>` : '<div class="master-empty">Nenhuma alteração registrada até agora.</div>'}</div>`;
   }
 }
 
 async function runSettingsMutation(form, action, successMessage) {
+  if (form.getAttribute('aria-busy') === 'true') return;
   const button = form.querySelector('[type="submit"]');
   const errorElement = form.querySelector('.arena-settings-error');
+  const buttonContent = button.innerHTML;
+  const cancel = form.querySelector('[data-settings-reset], [data-settings-cancel-court]');
+  form.setAttribute('aria-busy', 'true');
   button.disabled = true;
+  if (cancel) cancel.disabled = true;
+  button.innerHTML = '<span class="arena-settings-spinner" aria-hidden="true"></span><span>Salvando...</span>';
   errorElement.textContent = '';
   try {
     await action();
@@ -921,7 +959,12 @@ async function runSettingsMutation(form, action, successMessage) {
   } catch (error) {
     console.error(error);
     errorElement.textContent = error.message || 'Não foi possível salvar. Tente novamente.';
-  } finally { button.disabled = false; }
+  } finally {
+    form.removeAttribute('aria-busy');
+    button.disabled = false;
+    if (cancel) cancel.disabled = false;
+    button.innerHTML = buttonContent;
+  }
 }
 
 async function refreshCurrentAdminArena() {
@@ -4725,12 +4768,16 @@ document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addE
 }));
 
 $('#arenaSettingsContent').addEventListener('input', (event) => {
-  if (event.target.name !== 'public_access') return;
-  const catalog = $('#arenaSettingsForm')?.elements.public_listed;
-  if (catalog) catalog.disabled = !event.target.checked;
+  if (event.target.name === 'public_access' || event.target.name === 'public_listed') {
+    updateSettingsVisibility($('#arenaSettingsForm'), true);
+  }
 });
 
 $('#arenaSettingsContent').addEventListener('click', async (event) => {
+  if (event.target.closest('[data-settings-reset]')) {
+    renderArenaSettings();
+    $('#arenaSettingsForm')?.elements.name.focus();
+  }
   if (event.target.closest('[data-settings-copy]')) {
     try { await navigator.clipboard.writeText(masterLink(arena.slug)); toast('Link da agenda copiado.'); }
     catch { toast('Não foi possível copiar o link.'); }
