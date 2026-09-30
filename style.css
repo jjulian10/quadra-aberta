@@ -3963,3 +3963,21 @@ body.admin-session .arena-visibility-note{
     display:none;
   }
 }
+
+
+/* PUBLIC HEADER AVATAR VISIBILITY 2026-09-30 */
+/* O avatar JM não pertence à navegação pública. */
+.header-right .avatar.small{
+  display:none;
+}
+
+/* Mantém o avatar somente no painel administrativo em telas maiores. */
+body.admin-session .header-right .avatar.small{
+  display:grid;
+}
+
+@media(max-width:800px){
+  body.admin-session .header-right .avatar.small{
+    display:none;
+  }
+}
