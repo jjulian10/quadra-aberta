@@ -337,6 +337,7 @@ function setPremiumCalendarOpen(open) {
   popover.classList.toggle('hidden', !open);
   trigger.setAttribute('aria-expanded', String(open));
   trigger.closest('.premium-date-picker')?.classList.toggle('open', open);
+  document.querySelector('.workspace')?.classList.toggle('calendar-open', open);
 }
 
 function syncPremiumDatePicker() {
