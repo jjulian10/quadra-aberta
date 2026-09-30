@@ -46,6 +46,7 @@ const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 const today = localDate(new Date());
 
 let day = today;
+let datePickerCursor = new Date(today + 'T12:00:00');
 let view = 'player';
 let isAdmin = false;
 let isPlatformAdmin = false;
@@ -263,6 +264,102 @@ const weekdayLabel = (date) => {
   const label = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
+
+const fullDateLabel = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+
+function premiumCalendarMonthLabel(date) {
+  const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function isSameCalendarDay(a, b) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
+function renderPremiumDatePicker() {
+  const grid = $('#datePickerGrid');
+  const monthLabel = $('#datePickerMonthLabel');
+  const triggerValue = $('#datePickerValue');
+  if (!grid || !monthLabel || !triggerValue) return;
+
+  const selected = new Date(day + 'T12:00:00');
+  const now = new Date(today + 'T12:00:00');
+  const year = datePickerCursor.getFullYear();
+  const month = datePickerCursor.getMonth();
+
+  triggerValue.textContent = fullDateLabel(day);
+  monthLabel.textContent = premiumCalendarMonthLabel(datePickerCursor);
+
+  const first = new Date(year, month, 1, 12);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+
+  const cells = [];
+  for (let index = 0; index < 42; index += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const value = localDate(date);
+    const outside = date.getMonth() !== month;
+    const selectedDay = isSameCalendarDay(date, selected);
+    const todayDay = isSameCalendarDay(date, now);
+    const label = date.toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    cells.push(`<button type="button"
+      class="premium-date-day${outside ? ' outside' : ''}${selectedDay ? ' selected' : ''}${todayDay ? ' today' : ''}"
+      data-premium-date="${value}"
+      role="gridcell"
+      aria-selected="${selectedDay ? 'true' : 'false'}"
+      aria-label="${esc(label)}">
+      <span>${date.getDate()}</span>
+    </button>`);
+  }
+
+  grid.innerHTML = cells.join('');
+}
+
+function setPremiumCalendarOpen(open) {
+  const popover = $('#datePickerPopover');
+  const trigger = $('#datePickerTrigger');
+  if (!popover || !trigger) return;
+
+  if (open) {
+    datePickerCursor = new Date(day + 'T12:00:00');
+    renderPremiumDatePicker();
+  }
+
+  popover.classList.toggle('hidden', !open);
+  trigger.setAttribute('aria-expanded', String(open));
+  trigger.closest('.premium-date-picker')?.classList.toggle('open', open);
+}
+
+function syncPremiumDatePicker() {
+  const dateInput = $('#date');
+  const trigger = $('#datePickerTrigger');
+  const triggerValue = $('#datePickerValue');
+  if (!dateInput || !trigger || !triggerValue) return;
+  dateInput.value = day;
+  triggerValue.textContent = fullDateLabel(day);
+  trigger.disabled = dateInput.disabled;
+  if (trigger.disabled) setPremiumCalendarOpen(false);
+}
+
+async function selectPremiumAgendaDate(value) {
+  if (!value || value === day) {
+    setPremiumCalendarOpen(false);
+    return;
+  }
+  day = value;
+  $('#date').value = value;
+  setPremiumCalendarOpen(false);
+  await refreshBookings();
+}
 const fullDateLabel = (date) => new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {
   weekday: 'long',
   day: '2-digit',
@@ -2849,6 +2946,7 @@ function render() {
   ensureEnhancements();
   syncAccessControls();
   $('#date').value = day;
+  syncPremiumDatePicker();
   if ($('#weekdayLabel')) $('#weekdayLabel').textContent = weekdayLabel(day);
 
   const masterMode = view === 'master' && isPlatformAdmin;
@@ -3001,6 +3099,7 @@ function render() {
     $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>';
     $('#courtFilter').disabled = true;
     $('#date').disabled = true;
+    $('#datePickerTrigger').disabled = true;
     $('#prevDay').disabled = true;
     $('#nextDay').disabled = true;
     return;
@@ -3011,6 +3110,7 @@ function render() {
   $('#stats').classList.remove('hidden');
   $('#courtFilter').disabled = false;
   $('#date').disabled = false;
+  $('#datePickerTrigger').disabled = false;
   $('#prevDay').disabled = false;
   $('#nextDay').disabled = false;
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
@@ -4388,15 +4488,61 @@ $('#requests').addEventListener('click', (event) => {
 });
 $('#courtFilter').onchange = (event) => { filter = event.target.value; render(); };
 $('#date').onchange = async (event) => {
-  if (event.target.value) {
-    day = event.target.value;
-    await refreshBookings();
-  }
+  if (event.target.value) await selectPremiumAgendaDate(event.target.value);
 };
+
+$('#datePickerTrigger').onclick = () => {
+  if ($('#datePickerTrigger').disabled) return;
+  const open = !$('#datePickerPopover').classList.contains('hidden');
+  setPremiumCalendarOpen(!open);
+};
+
+$('#datePickerPrevMonth').onclick = () => {
+  datePickerCursor = new Date(datePickerCursor.getFullYear(), datePickerCursor.getMonth() - 1, 1, 12);
+  renderPremiumDatePicker();
+};
+
+$('#datePickerNextMonth').onclick = () => {
+  datePickerCursor = new Date(datePickerCursor.getFullYear(), datePickerCursor.getMonth() + 1, 1, 12);
+  renderPremiumDatePicker();
+};
+
+$('#datePickerGrid').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-premium-date]');
+  if (!button) return;
+  await selectPremiumAgendaDate(button.dataset.premiumDate);
+});
+
+$('#datePickerToday').onclick = async () => {
+  datePickerCursor = new Date(today + 'T12:00:00');
+  await selectPremiumAgendaDate(today);
+  renderPremiumDatePicker();
+};
+
+$('#datePickerClear').onclick = () => {
+  datePickerCursor = new Date(day + 'T12:00:00');
+  renderPremiumDatePicker();
+  setPremiumCalendarOpen(false);
+};
+
+document.addEventListener('pointerdown', (event) => {
+  const picker = event.target.closest('.premium-date-picker');
+  if (!picker && !$('#datePickerPopover').classList.contains('hidden')) setPremiumCalendarOpen(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#datePickerPopover').classList.contains('hidden')) {
+    setPremiumCalendarOpen(false);
+    $('#datePickerTrigger').focus();
+  }
+});
+
 async function moveDay(amount) {
   const date = new Date(day + 'T12:00:00');
   date.setDate(date.getDate() + amount);
   day = localDate(date);
+  datePickerCursor = new Date(day + 'T12:00:00');
+  setPremiumCalendarOpen(false);
   await refreshBookings();
 }
 $('#prevDay').onclick = () => moveDay(-1);
