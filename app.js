@@ -50,6 +50,9 @@ let view = 'player';
 let isAdmin = false;
 let isPlatformAdmin = false;
 let currentAdminUserId = '';
+let currentAdminName = '';
+let currentAdminEmail = '';
+let currentAdminPhone = '';
 let masterArenas = [];
 let masterLoading = false;
 let masterDetail = null;
@@ -929,11 +932,22 @@ function renderArenaSettings() {
       </form>` : ''}`;
   } else if (settingsTab === 'admins') {
     target.innerHTML = `<div class="arena-settings-section-head"><div><h3>Administradores da arena</h3><p>Controle os acessos sem compartilhar sua senha.</p></div><span class="arena-settings-badge">${admins.length} acesso${admins.length === 1 ? '' : 's'}</span></div>
-      <div class="arena-settings-list">${admins.map((admin) => `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(admin.email))}</span><div class="master-manage-item-copy"><strong>${esc(admin.email)}</strong><small>${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : admin.user_id === currentAdminUserId ? '<span class="master-status active">Você</span>' : `<button class="master-manage-quiet" type="button" data-settings-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`).join('')}</div>
+      <div class="arena-settings-list">${admins.map((admin) => {
+        const adminName = admin.name || admin.email;
+        const adminPhone = admin.phone ? formatWhatsapp(admin.phone) : '';
+        const adminContact = [admin.email, adminPhone].filter(Boolean).join(' · ');
+        return `<div class="master-manage-item"><span class="master-manage-item-icon">${esc(arenaInitials(adminName))}</span><div class="master-manage-item-copy"><strong>${esc(adminName)}</strong><small>${esc(adminContact)} · ${admin.role === 'owner' ? 'Proprietário' : 'Administrador'} · desde ${new Date(admin.created_at).toLocaleDateString('pt-BR')}</small></div>${admin.role === 'owner' ? '<span class="master-status active">Principal</span>' : admin.user_id === currentAdminUserId ? '<span class="master-status active">Você</span>' : `<button class="master-manage-quiet" type="button" data-settings-remove-admin="${esc(admin.user_id)}">Remover</button>`}</div>`;
+      }).join('')}</div>
       <form id="arenaSettingsInviteForm" class="arena-settings-card arena-settings-edit">
-        ${settingsHeading('Adicionar administrador', 'Uma conta nova recebe convite por e-mail. Uma conta existente mantém sua senha atual.', 'people', 'Acessos da arena')}
-        <div class="arena-settings-fields">${settingsField('E-mail do administrador', 'email', '', 'mail', 'type="email" autocomplete="off" required placeholder="admin@arena.com"')}</div>
-        ${settingsFooter('Cada administrador utiliza seu próprio acesso.', `<button class="primary" type="submit">${settingsIcon('send')}<span>Enviar convite</span></button>`)}
+        ${settingsHeading('Adicionar administrador', 'Cadastre os dados do responsável. Se for uma conta nova, o convite será enviado por e-mail.', 'people', 'Acessos da arena')}
+        <div class="arena-settings-fields">
+          <div class="arena-settings-field-grid">
+            ${settingsField('Nome completo', 'name', '', 'people', 'required minlength="2" maxlength="80" autocomplete="name" placeholder="Ex.: João da Silva"')}
+            ${settingsField('Telefone', 'phone', '', 'phone', 'type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(69) 99999-9999"')}
+          </div>
+          ${settingsField('E-mail do administrador', 'email', '', 'mail', 'type="email" autocomplete="off" required placeholder="admin@arena.com"')}
+        </div>
+        ${settingsFooter('O nome será usado para identificar o administrador no painel.', `<button class="primary" type="submit">${settingsIcon('send')}<span>Enviar convite</span></button>`)}
       </form>`;
   } else {
     const labels = { 'arena.updated': 'Informações da arena alteradas', 'arena.suspended': 'Arena suspensa', 'arena.reactivated': 'Arena reativada', 'court.created': 'Nova quadra cadastrada', 'court.updated': 'Quadra atualizada', 'admin.added': 'Administrador adicionado', 'admin.removed': 'Acesso removido' };
@@ -1055,6 +1069,11 @@ async function enterAdminPanelForUser(userId) {
   currentAdminUserId = userId;
   isPlatformAdmin = await checkPlatformAdmin(userId);
   const linkedArena = await getAdminArenaForUser(userId);
+  const { data: identityData } = await supabase.auth.getUser();
+  const authUser = identityData?.user || null;
+  currentAdminName = linkedArena?.admin_name || authUser?.user_metadata?.full_name || '';
+  currentAdminEmail = linkedArena?.admin_email || authUser?.email || '';
+  currentAdminPhone = linkedArena?.admin_phone || authUser?.user_metadata?.phone || '';
 
   if (linkedArena && !linkedArena.active) {
     const message = arenaSuspensionMessage(linkedArena);
@@ -1168,6 +1187,9 @@ async function verifyCurrentAdminArenaAccess() {
   isAdmin = false;
   isPlatformAdmin = false;
   currentAdminUserId = '';
+  currentAdminName = '';
+  currentAdminEmail = '';
+  currentAdminPhone = '';
   masterArenas = [];
   arenaSettingsDetail = null;
   view = 'player';
@@ -1395,6 +1417,20 @@ function syncAccessControls() {
   $('#blockSchedule').classList.toggle('hidden', !isAdmin || view !== 'admin' || view === 'master');
 
   document.body.classList.toggle('admin-session', isAdmin);
+
+  const adminHeaderName = $('#adminHeaderName');
+  const adminHeaderAvatar = $('#adminHeaderAvatar');
+  const identityLabel = currentAdminName || currentAdminEmail || 'Administrador';
+  if (adminHeaderName) {
+    adminHeaderName.textContent = currentAdminName || '';
+    adminHeaderName.title = currentAdminEmail || identityLabel;
+    adminHeaderName.classList.toggle('hidden', !isAdmin || !currentAdminName);
+  }
+  if (adminHeaderAvatar) {
+    adminHeaderAvatar.textContent = arenaInitials(identityLabel);
+    adminHeaderAvatar.title = currentAdminEmail || identityLabel;
+    adminHeaderAvatar.setAttribute('aria-label', currentAdminName ? `Administrador: ${currentAdminName}` : 'Administrador');
+  }
 
   const arenaContact = $('#arenaFooterContact');
   if (arenaContact) {
@@ -3978,6 +4014,9 @@ async function leaveAdminSession() {
   isAdmin = false;
   isPlatformAdmin = false;
   currentAdminUserId = '';
+  currentAdminName = '';
+  currentAdminEmail = '';
+  currentAdminPhone = '';
   masterArenas = [];
   arenaSettingsDetail = null;
   view = 'player';
@@ -4839,9 +4878,12 @@ $('#arenaSettingsContent').addEventListener('submit', (event) => {
       await refreshCurrentAdminArena();
     }, 'Quadra salva com sucesso.');
   } else if (form.id === 'arenaSettingsInviteForm') {
-    const email = String(new FormData(form).get('email')).trim().toLowerCase();
+    const values = new FormData(form);
+    const name = String(values.get('name') || '').trim().replace(/\s+/g, ' ');
+    const phone = String(values.get('phone') || '').trim();
+    const email = String(values.get('email') || '').trim().toLowerCase();
     runSettingsMutation(form, async () => {
-      const { data, error } = await supabase.functions.invoke('manage-arena-admin', { body: { arenaId, email } });
+      const { data, error } = await supabase.functions.invoke('manage-arena-admin', { body: { arenaId, name, phone, email } });
       if (error) {
         let message = error.message;
         try { message = (await error.context?.json())?.error || message; } catch {}
