@@ -5754,3 +5754,47 @@ body.admin-session .admin-user-name:not(.hidden){
     animation:none!important;
   }
 }
+
+
+/* MOBILE BOOKING COURT SELECT FIX 2026-09-30 */
+@media(max-width:560px){
+  #bookingDialog .booking-detail-grid{
+    grid-template-columns:minmax(105px,.72fr) minmax(0,1.28fr);
+  }
+
+  #bookingDialog .booking-detail-grid .booking-field-label{
+    min-width:0;
+  }
+
+  #bookingDialog .booking-detail-grid .booking-control{
+    min-width:0;
+  }
+
+  #bookingDialog #bookingCourt{
+    min-width:0;
+    padding-left:9px!important;
+    padding-right:3px!important;
+    font-size:14px!important;
+    font-weight:700;
+  }
+
+  #bookingDialog #bookingDuration{
+    padding-left:9px!important;
+    padding-right:4px!important;
+    font-size:15px!important;
+  }
+
+  #bookingDialog .booking-hour-field{
+    grid-column:1/-1;
+  }
+}
+
+@media(max-width:350px){
+  #bookingDialog .booking-detail-grid{
+    grid-template-columns:1fr;
+  }
+
+  #bookingDialog .booking-hour-field{
+    grid-column:auto;
+  }
+}
