@@ -4799,3 +4799,230 @@ body.admin-session .admin-user-name:not(.hidden){
     transition:none!important;
   }
 }
+
+
+/* MOBILE ARENA SUPPORT CTA 2026-09-30 */
+.mobile-arena-support{
+  display:none;
+}
+
+@media(max-width:800px){
+  .mobile-arena-support:not([hidden]){
+    position:relative;
+    isolation:isolate;
+    display:grid;
+    gap:14px;
+    margin:22px 0 6px;
+    padding:18px;
+    overflow:hidden;
+    border:1px solid #dce8df;
+    border-radius:18px;
+    background:
+      radial-gradient(circle at 94% 8%,rgba(197,242,119,.16),transparent 27%),
+      linear-gradient(145deg,#ffffff 0%,#f5faf4 100%);
+    box-shadow:
+      0 16px 38px rgba(23,60,48,.08),
+      inset 0 1px 0 rgba(255,255,255,.9);
+    animation:mobileArenaSupportIn .3s cubic-bezier(.2,.8,.2,1) both;
+  }
+
+  .mobile-arena-support::after{
+    content:"";
+    position:absolute;
+    z-index:-1;
+    right:-44px;
+    bottom:-58px;
+    width:150px;
+    height:150px;
+    border-radius:50%;
+    border:1px solid rgba(66,126,82,.07);
+    box-shadow:0 0 0 18px rgba(66,126,82,.025);
+    pointer-events:none;
+  }
+
+  .mobile-arena-support-head{
+    display:grid;
+    grid-template-columns:46px minmax(0,1fr);
+    gap:12px;
+    align-items:center;
+  }
+
+  .mobile-arena-support-icon{
+    display:grid;
+    place-items:center;
+    width:46px;
+    height:46px;
+    border:1px solid #dcebd9;
+    border-radius:14px;
+    background:linear-gradient(145deg,#edf8e5,#e2f2d8);
+    color:#1d6a48;
+    box-shadow:0 8px 18px rgba(30,89,59,.08);
+  }
+
+  .mobile-arena-support-icon svg{
+    width:23px;
+    height:23px;
+  }
+
+  .mobile-arena-support-copy{
+    min-width:0;
+  }
+
+  .mobile-arena-support-copy>span{
+    display:block;
+    margin-bottom:4px;
+    color:#66806e;
+    font-size:8.5px;
+    font-weight:800;
+    letter-spacing:.15em;
+  }
+
+  .mobile-arena-support-copy strong{
+    display:block;
+    color:#17362f;
+    font:800 17px/1.15 Manrope,'DM Sans',sans-serif;
+    letter-spacing:-.025em;
+  }
+
+  .mobile-arena-support-copy p{
+    margin:5px 0 0;
+    color:#6e7e74;
+    font-size:11px;
+    line-height:1.45;
+  }
+
+  .mobile-arena-support-copy b{
+    color:#476554;
+    font-weight:700;
+  }
+
+  .mobile-arena-support-button{
+    position:relative;
+    display:grid;
+    grid-template-columns:24px minmax(0,1fr) 20px;
+    align-items:center;
+    gap:10px;
+    min-height:50px;
+    padding:0 15px;
+    overflow:hidden;
+    border:1px solid #184d3d;
+    border-radius:14px;
+    background:
+      linear-gradient(105deg,rgba(255,255,255,.08),transparent 36%),
+      linear-gradient(135deg,#1d5f49 0%,#123f33 100%);
+    color:#fff;
+    text-decoration:none;
+    box-shadow:0 12px 26px rgba(18,63,51,.18);
+    transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+  }
+
+  .mobile-arena-support-button::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(100deg,transparent 20%,rgba(197,242,119,.11) 48%,transparent 76%);
+    transform:translateX(-110%);
+    animation:mobileArenaSupportShine 5.8s ease-in-out infinite;
+    pointer-events:none;
+  }
+
+  .mobile-arena-support-button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 16px 30px rgba(18,63,51,.23);
+    filter:brightness(1.025);
+  }
+
+  .mobile-arena-support-button:active{
+    transform:scale(.99);
+  }
+
+  .mobile-arena-support-button:focus-visible{
+    outline:3px solid rgba(68,143,88,.18);
+    outline-offset:3px;
+  }
+
+  .mobile-arena-support-button-icon{
+    display:grid;
+    place-items:center;
+    width:24px;
+    height:24px;
+    color:#c5f277;
+  }
+
+  .mobile-arena-support-button-icon svg{
+    width:22px;
+    height:22px;
+  }
+
+  .mobile-arena-support-button>span:nth-child(2){
+    font-size:12.5px;
+    font-weight:800;
+    text-align:left;
+  }
+
+  .mobile-arena-support-arrow{
+    display:grid;
+    place-items:center;
+    color:#d8ebdf;
+    font-size:22px;
+    line-height:1;
+    transition:transform .18s ease;
+  }
+
+  .mobile-arena-support-button:hover .mobile-arena-support-arrow{
+    transform:translateX(2px);
+  }
+
+  body.admin-session .mobile-arena-support{
+    display:none!important;
+  }
+}
+
+@media(max-width:420px){
+  .mobile-arena-support:not([hidden]){
+    margin-top:18px;
+    padding:15px;
+    border-radius:16px;
+  }
+
+  .mobile-arena-support-head{
+    grid-template-columns:42px minmax(0,1fr);
+    gap:10px;
+  }
+
+  .mobile-arena-support-icon{
+    width:42px;
+    height:42px;
+    border-radius:12px;
+  }
+
+  .mobile-arena-support-copy strong{
+    font-size:16px;
+  }
+
+  .mobile-arena-support-button{
+    min-height:48px;
+    padding:0 13px;
+    border-radius:13px;
+  }
+}
+
+@keyframes mobileArenaSupportIn{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+@keyframes mobileArenaSupportShine{
+  0%,74%,100%{transform:translateX(-110%)}
+  84%{transform:translateX(110%)}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .mobile-arena-support,
+  .mobile-arena-support-button,
+  .mobile-arena-support-button::before,
+  .mobile-arena-support-arrow{
+    animation:none!important;
+    transition:none!important;
+  }
+}
