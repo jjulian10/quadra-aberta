@@ -568,6 +568,7 @@
 
   <div class="announcement-form-layout">
     <div class="announcement-form-main">
+      <p class="announcement-form-section-label">CONTEÚDO DO AVISO</p>
       <label>Título *
         <input id="announcementTitle" name="title" type="text" required minlength="3" maxlength="100" placeholder="Ex.: Promoção Futebol Noturno">
       </label>
@@ -612,7 +613,8 @@
       </div>
     </div>
 
-    <aside class="announcement-form-side">
+    <div class="announcement-form-side">
+      <p class="announcement-form-section-label">PUBLICAÇÃO E PRÉVIA</p>
       <div class="announcement-period-card">
         <strong>Período de exibição</strong>
         <div class="announcement-form-grid">
@@ -628,16 +630,11 @@
         </label>
       </div>
 
-      <div class="announcement-form-tip">
-        <span aria-hidden="true">i</span>
-        <div><strong>Dica</strong><small>Use imagens chamativas e textos curtos para atrair mais clientes sem poluir a agenda.</small></div>
-      </div>
-
       <div class="announcement-live-preview">
         <span>PRÉVIA PARA O PÚBLICO</span>
         <div id="announcementLivePreview"></div>
       </div>
-    </aside>
+    </div>
   </div>
 
   <p id="announcementError" class="arena-settings-error" role="alert"></p>
