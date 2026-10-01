@@ -913,6 +913,39 @@ body.reservation-mode>.app{
   font-size:11px;
   line-height:1.5;
 }
+.reservation-pay-at-venue{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin-top:15px;
+  padding:13px;
+  border:1px solid #dce9dc;
+  border-radius:12px;
+  background:#f5faf3;
+  color:#173f34;
+}
+.reservation-pay-at-venue-icon{
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:25px;
+  height:25px;
+  border-radius:50%;
+  background:#e0efd9;
+  font-size:14px;
+  font-weight:800;
+}
+.reservation-pay-at-venue strong,
+.reservation-pay-at-venue small{
+  display:block;
+  line-height:1.45;
+}
+.reservation-pay-at-venue strong{font-size:12px}
+.reservation-pay-at-venue small{
+  margin-top:3px;
+  color:#536b5e;
+  font-size:11px;
+}
 .reservation-actions{
   display:grid;
   gap:8px;
