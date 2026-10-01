@@ -4209,7 +4209,7 @@ grant select, insert, update on public.cash_expenses to authenticated;
 revoke all on public.cash_closings from public, anon;
 grant select on public.cash_closings to authenticated;
 
-create or replace function public.close_cash_day(target_arena_id uuid, target_date date, target_counted_total numeric, target_payment_breakdown jsonb default '{}'::jsonb, target_notes text default null)
+create or replace function private.close_cash_day_impl(target_arena_id uuid, target_date date, target_counted_total numeric, target_payment_breakdown jsonb default '{}'::jsonb, target_notes text default null)
 returns public.cash_closings language plpgsql security definer set search_path = '' as $$
 declare
   booking_total numeric(12,2);
@@ -4232,6 +4232,12 @@ begin
 exception when unique_violation then raise exception 'Este dia já foi fechado.';
 end;
 $$;
+create or replace function public.close_cash_day(target_arena_id uuid, target_date date, target_counted_total numeric, target_payment_breakdown jsonb default '{}'::jsonb, target_notes text default null)
+returns public.cash_closings language sql security invoker set search_path = '' as $$
+  select private.close_cash_day_impl(target_arena_id, target_date, target_counted_total, target_payment_breakdown, target_notes);
+$$;
+revoke all on function private.close_cash_day_impl(uuid, date, numeric, jsonb, text) from public, anon;
+grant execute on function private.close_cash_day_impl(uuid, date, numeric, jsonb, text) to authenticated;
 revoke all on function public.close_cash_day(uuid, date, numeric, jsonb, text) from public, anon;
 grant execute on function public.close_cash_day(uuid, date, numeric, jsonb, text) to authenticated;
 revoke all on function private.cash_day_is_open(uuid, date) from public, anon;
