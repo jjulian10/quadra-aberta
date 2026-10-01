@@ -5532,12 +5532,12 @@ function renderReservationPortal(reservation) {
         <div class="reservation-money-row"><span>Valor pago</span><strong>${money(received)}</strong></div>
         <div class="reservation-money-row remaining"><span>Saldo restante</span><strong>${money(remaining)}</strong></div>
         <div class="reservation-progress"><span style="width:${progress}%"></span></div>
-        ${!fullyPaid && !cancelled && remaining > 0.001 ? `
+        ${!fullyPaid && !cancelled && reservation.status === 'confirmed' && reservation.payment_status === 'partial' && remaining > 0.001 ? `
           <div class="reservation-pay-at-venue" role="note">
             <span class="reservation-pay-at-venue-icon" aria-hidden="true">✓</span>
             <span><strong>Pague o saldo restante no local</strong><small>O valor de ${money(remaining)} deverá ser pago diretamente na arena no dia do jogo.</small></span>
           </div>
-        ` : `<small>${fullyPaid ? 'Pagamento concluído.' : 'Consulte a arena sobre valores já pagos.'}</small>`}
+        ` : `<small>${fullyPaid ? 'Pagamento concluído.' : cancelled ? 'Consulte a arena sobre valores já pagos.' : 'Aguardando confirmação do sinal da reserva.'}</small>`}
 
         <div class="reservation-actions">
           ${!cancelled ? pushInvite(reservation.id, true) : ''}
