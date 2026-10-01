@@ -199,7 +199,6 @@ let realtimeRefreshTimer = null;
 let lastPlayerBooking = null;
 let paymentPollTimer = null;
 let paymentCheckInFlight = false;
-let reservationPortalTimer = null;
 let reservationPortalData = null;
 let waitlistSelection = null;
 let cancellationHistory = [];
@@ -3622,7 +3621,9 @@ function showConfirmation(booking) {
   $('#price').textContent = money(totalAmount);
   document.querySelector('.price-line span').textContent = `Total · ${durationLabel(booking.duration)}`;
   $('#bookingNote').textContent = booking.reservationToken
-    ? 'Use “Minha reserva” para consultar este agendamento novamente e pagar o saldo restante.'
+    ? remainingAmount > 0.001
+      ? 'Use “Minha reserva” para consultar este agendamento. Pague o saldo restante diretamente na arena no dia do jogo.'
+      : 'Use “Minha reserva” para consultar este agendamento novamente.'
     : 'Reserva confirmada.';
   $('#dialogActions').innerHTML = booking.reservationToken
     ? '<button type="button" class="primary" data-action="my-reservation">Minha reserva</button><button type="button" class="secondary" data-action="copy-reservation-link">Copiar link</button><button type="button" class="secondary" data-action="support">Suporte da arena</button>'
@@ -5491,28 +5492,7 @@ function renderReservationPortal(reservation) {
   const remaining = Number(reservation.remaining_amount || 0);
   const cancelled = reservation.status === 'cancelled';
   const fullyPaid = reservation.payment_status === 'paid';
-  const canPayBalance = !cancelled && reservation.status === 'confirmed' && reservation.payment_status === 'partial' && remaining > 0.001;
-  const balancePayment = reservation.balance_payment;
   const progress = total > 0 ? Math.max(0, Math.min(100, Math.round(received / total * 100))) : 0;
-
-  const balancePanel = balancePayment && canPayBalance ? `
-    <section class="reservation-balance-box">
-      <div class="reservation-section-title">
-        <div>
-          <span>PAGAMENTO DO SALDO</span>
-          <h2>Finalize sua reserva via Pix</h2>
-        </div>
-        <strong>${money(Number(balancePayment.amount || remaining))}</strong>
-      </div>
-      ${balancePayment.qr_code_base64 ? `<img class="reservation-qr" src="data:image/png;base64,${balancePayment.qr_code_base64}" alt="QR Code Pix do saldo restante">` : ''}
-      <div class="reservation-pix-copy">
-        <input id="reservationPixCode" readonly value="${esc(balancePayment.qr_code || '')}" aria-label="Pix copia e cola do saldo restante">
-        <button type="button" class="secondary" data-reservation-action="copy-balance-pix">Copiar Pix</button>
-      </div>
-      ${balancePayment.ticket_url ? `<a class="reservation-mp-link" href="${esc(balancePayment.ticket_url)}" target="_blank" rel="noopener noreferrer">Abrir pagamento no Mercado Pago ↗</a>` : ''}
-      <div class="payment-waiting"><span class="payment-dot"></span><span>Aguardando confirmação do saldo restante…</span></div>
-    </section>
-  ` : '';
 
   content.innerHTML = `
     <div class="reservation-hero">
@@ -5552,10 +5532,14 @@ function renderReservationPortal(reservation) {
         <div class="reservation-money-row"><span>Valor pago</span><strong>${money(received)}</strong></div>
         <div class="reservation-money-row remaining"><span>Saldo restante</span><strong>${money(remaining)}</strong></div>
         <div class="reservation-progress"><span style="width:${progress}%"></span></div>
-        <small>${fullyPaid ? 'Pagamento concluído.' : cancelled ? 'Consulte a arena sobre valores já pagos.' : 'O saldo pode ser quitado diretamente por aqui.'}</small>
+        ${!fullyPaid && !cancelled && remaining > 0.001 ? `
+          <div class="reservation-pay-at-venue" role="note">
+            <span class="reservation-pay-at-venue-icon" aria-hidden="true">✓</span>
+            <span><strong>Pague o saldo restante no local</strong><small>O valor de ${money(remaining)} deverá ser pago diretamente na arena no dia do jogo.</small></span>
+          </div>
+        ` : `<small>${fullyPaid ? 'Pagamento concluído.' : 'Consulte a arena sobre valores já pagos.'}</small>`}
 
         <div class="reservation-actions">
-          ${canPayBalance && !balancePayment ? '<button class="primary" type="button" data-reservation-action="pay-balance">Pagar saldo restante via Pix</button>' : ''}
           ${!cancelled ? pushInvite(reservation.id, true) : ''}
           <button class="secondary" type="button" data-reservation-action="support">Falar com a arena</button>
           ${!cancelled ? '<button class="text-action reservation-cancel-link" type="button" data-reservation-action="cancel-request">Solicitar cancelamento</button>' : ''}
@@ -5563,19 +5547,11 @@ function renderReservationPortal(reservation) {
       </aside>
     </div>
 
-    ${balancePanel}
-
     <div class="reservation-note">
       <strong>Sobre cancelamentos</strong>
       <p>Nesta versão, o cancelamento é solicitado diretamente à arena pelo WhatsApp. Quando definirmos a política de prazo, poderemos automatizar essa etapa.</p>
     </div>
   `;
-
-  clearInterval(reservationPortalTimer);
-  if (balancePayment && canPayBalance) {
-    reservationPortalTimer = setInterval(() => checkReservationBalancePayment(false), 3500);
-    checkReservationBalancePayment(false);
-  }
 }
 
 async function loadReservationPortal(showLoading = true) {
@@ -5599,73 +5575,6 @@ async function loadReservationPortal(showLoading = true) {
 
   renderReservationPortal(data.reservation);
   return data.reservation;
-}
-
-async function checkReservationBalancePayment(showError = true) {
-  if (!reservationTokenFromUrl) return;
-
-  try {
-    const { data, error } = await supabase.functions.invoke('check-reservation-balance-payment', {
-      body: { token: reservationTokenFromUrl }
-    });
-
-    if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao verificar pagamento.');
-
-    if (data?.payment_status === 'paid') {
-      clearInterval(reservationPortalTimer);
-      reservationPortalTimer = null;
-      await loadReservationPortal(false);
-      const portalToast = $('#reservationPortalToast');
-      if (portalToast) {
-        portalToast.textContent = 'Pagamento integral confirmado!';
-        portalToast.classList.add('show');
-        setTimeout(() => portalToast.classList.remove('show'), 4200);
-      }
-    } else if (data?.expired) {
-      clearInterval(reservationPortalTimer);
-      reservationPortalTimer = null;
-      await loadReservationPortal(false);
-    }
-  } catch (error) {
-    console.error(error);
-    if (showError) {
-      const portalError = $('#reservationPortalError');
-      if (portalError) portalError.textContent = error.message || 'Não foi possível verificar o pagamento.';
-    }
-  }
-}
-
-async function createReservationBalancePayment() {
-  const button = document.querySelector('[data-reservation-action="pay-balance"]');
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Gerando Pix...';
-  }
-
-  try {
-    const { data, error } = await supabase.functions.invoke('create-reservation-balance-pix', {
-      body: { token: reservationTokenFromUrl }
-    });
-
-    if (error || data?.error) {
-      let message = data?.error || error?.message || 'Não foi possível gerar o Pix.';
-      try {
-        const body = await error?.context?.json();
-        if (body?.error) message = body.error;
-      } catch {}
-      throw new Error(message);
-    }
-
-    await loadReservationPortal(false);
-  } catch (error) {
-    console.error(error);
-    const portalError = $('#reservationPortalError');
-    if (portalError) portalError.textContent = error.message || 'Não foi possível gerar o Pix do saldo.';
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Pagar saldo restante via Pix';
-    }
-  }
 }
 
 function openReservationWhatsapp(kind = 'support') {
@@ -5768,26 +5677,6 @@ $('#reservationPortal').addEventListener('click', async (event) => {
     openReservationWhatsapp('cancel');
     return;
   }
-
-  if (action === 'pay-balance') {
-    await createReservationBalancePayment();
-    return;
-  }
-
-  if (action === 'copy-balance-pix') {
-    const input = $('#reservationPixCode');
-    if (!input?.value) return;
-    try {
-      await navigator.clipboard.writeText(input.value);
-      button.textContent = 'Copiado!';
-      setTimeout(() => { button.textContent = 'Copiar Pix'; }, 1600);
-    } catch {
-      input.focus();
-      input.select();
-      input.setSelectionRange(0, input.value.length);
-      window.prompt('Copie o código Pix:', input.value);
-    }
-  }
 });
 
 let initializing = false;
@@ -5847,7 +5736,6 @@ initialize();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (reservationTokenFromUrl) {
-    if (reservationPortalData?.balance_payment) checkReservationBalancePayment(false);
     return;
   }
   if (!isAdmin && $('#bookingDialog').open && lastPlayerBooking?.paymentStatus === 'pending') {
