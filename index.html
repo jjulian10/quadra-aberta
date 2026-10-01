@@ -994,6 +994,40 @@
 <div class="dialog-actions"><button class="primary" id="submitBlock" type="submit">Bloquear agenda</button></div>
 </form>
 </dialog>
+<dialog id="cashClosingConfirmDialog" class="cash-closing-confirm-dialog" aria-labelledby="cashClosingConfirmTitle" aria-describedby="cashClosingConfirmDescription">
+  <form id="cashClosingConfirmForm" class="cash-confirm-shell">
+    <div class="cash-confirm-glow" aria-hidden="true"></div>
+    <div class="cash-confirm-topline">
+      <div class="cash-confirm-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3 5.5 6v5.2c0 4.1 2.5 7.6 6.5 9.8 4-2.2 6.5-5.7 6.5-9.8V6L12 3Z"></path>
+          <path d="m8.8 12 2.1 2.1 4.4-4.4"></path>
+        </svg>
+      </div>
+      <button type="button" class="close cash-confirm-close" id="closeCashClosingConfirm" aria-label="Fechar confirmação">×</button>
+    </div>
+    <p class="eyebrow">FECHAMENTO DO DIA</p>
+    <h2 id="cashClosingConfirmTitle">Confirmar fechamento?</h2>
+    <p class="cash-confirm-intro" id="cashClosingConfirmDescription">Confira os valores antes de proteger o caixa.</p>
+    <div class="cash-confirm-status" id="cashClosingConfirmStatus" role="status">
+      <span class="cash-confirm-status-dot" aria-hidden="true"></span>
+      <div><strong id="cashClosingConfirmStatusTitle">Conferência equilibrada</strong><small id="cashClosingConfirmStatusText">Os valores estão prontos para serem registrados.</small></div>
+    </div>
+    <div class="cash-confirm-summary" aria-label="Resumo do fechamento">
+      <div><span>Valor esperado</span><strong id="cashClosingConfirmExpected">R$ 0,00</strong></div>
+      <div><span>Valor contado</span><strong id="cashClosingConfirmCounted">R$ 0,00</strong></div>
+      <div class="cash-confirm-difference"><span>Diferença</span><strong id="cashClosingConfirmDifference">R$ 0,00</strong></div>
+    </div>
+    <div class="cash-confirm-lock-note">
+      <span aria-hidden="true">⌾</span>
+      <p>Depois de concluído, o dia ficará protegido contra alterações.</p>
+    </div>
+    <div class="dialog-actions cash-confirm-actions">
+      <button class="secondary" id="cancelCashClosingConfirm" type="button">Cancelar</button>
+      <button class="primary cash-confirm-submit" id="confirmCashClosingSubmit" type="submit">Confirmar fechamento <span>→</span></button>
+    </div>
+  </form>
+</dialog>
 <div class="toast" id="toast" role="status">
 </div>
 <script type="module" src="app.js">

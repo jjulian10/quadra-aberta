@@ -700,6 +700,52 @@ body.admin-session .arena-footer-contact{
 @media(max-width:650px){.cash-closing-head{padding:21px 18px;flex-direction:column}.cash-closing-head h2{font-size:21px}.cash-closing-status{align-self:flex-start}.cash-closing-kpis{padding:12px;gap:9px}.cash-closing-kpi{padding:12px}.cash-closing-kpi strong{font-size:17px}.cash-closing-main-grid{padding:12px}.cash-closing-summary,.cash-closing-check{padding:15px}.cash-summary-body{align-items:flex-start;gap:14px}.cash-progress-ring{width:108px;height:108px}.cash-progress-ring:after{inset:10px}.cash-progress-ring strong{font-size:20px}.cash-expenses-card,.cash-movements-card{margin:12px;padding:15px}.cash-expense-form{grid-template-columns:1fr 1fr}.cash-expense-form label:first-child{grid-column:1 / -1}.cash-expense-actions{grid-column:1 / -1;justify-content:flex-end}.cash-card-heading{flex-direction:column;gap:9px}.cash-closing-date,.cash-history-count,.cash-outline-button,.cash-locked-label{align-self:flex-start}.cash-closing-form .cash-payment-grid{grid-template-columns:1fr 1fr}.cash-closing-form .cash-payment-grid label:last-child{grid-column:1 / -1}.cash-summary-legend>div{font-size:10px}.cash-summary-legend>div strong{font-size:10px}}
 @media(max-width:420px){.cash-closing-kpis{grid-template-columns:1fr 1fr}.cash-closing-kpi small{font-size:9px}.cash-summary-body{flex-direction:column;align-items:center}.cash-summary-legend{width:100%}.cash-expense-form{grid-template-columns:1fr}.cash-expense-form label:first-child,.cash-expense-actions{grid-column:auto}.cash-expense-actions button{flex:1}}
 
+/* Confirmação premium do fechamento */
+.cash-closing-confirm-dialog{width:min(500px,calc(100% - 28px));padding:0;border:1px solid #dce9df;border-radius:24px;background:#fff;color:var(--ink);overflow:hidden;box-shadow:0 30px 100px #0b261b3d;animation:cashConfirmIn .32s cubic-bezier(.2,.8,.2,1)}
+.cash-closing-confirm-dialog::backdrop{background:#102b2575;backdrop-filter:blur(8px);animation:cashConfirmBackdrop .28s ease-out}
+.cash-confirm-shell{position:relative;padding:28px 30px 25px;overflow:hidden}
+.cash-confirm-glow{position:absolute;inset:-130px -90px auto auto;width:300px;height:260px;border-radius:50%;background:radial-gradient(circle,#c5f27742 0,#c5f27718 38%,transparent 72%);pointer-events:none}
+.cash-confirm-topline{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:19px}
+.cash-confirm-icon{position:relative;display:grid;place-items:center;width:58px;height:58px;border-radius:19px;background:linear-gradient(145deg,#1d5b45,#153d33);color:var(--lime);box-shadow:0 12px 24px #194d3e2b;animation:cashConfirmPop .55s cubic-bezier(.2,.9,.25,1.3) both}
+.cash-confirm-icon::before{content:"";position:absolute;inset:-6px;border:1px solid #bce87366;border-radius:23px;animation:cashConfirmPulse 2.4s ease-out infinite}
+.cash-confirm-icon svg{width:28px;height:28px}
+.cash-confirm-close{position:relative;z-index:1;margin:-7px -8px 0 0;width:34px;height:34px;border-radius:10px;color:#769087;font-size:25px;line-height:1}
+.cash-confirm-close:hover{background:#f1f6f1;color:var(--ink)}
+.cash-closing-confirm-dialog .eyebrow{position:relative;z-index:1;margin:0 0 7px;color:#6a914a;font-size:10px;letter-spacing:1.25px}
+.cash-closing-confirm-dialog h2{position:relative;z-index:1;margin:0;color:var(--ink);font:800 25px/1.1 Manrope,sans-serif;letter-spacing:-.65px}
+.cash-confirm-intro{position:relative;z-index:1;margin:9px 0 18px;color:var(--muted);font-size:12px;line-height:1.55}
+.cash-confirm-status{position:relative;z-index:1;display:flex;align-items:center;gap:10px;margin-bottom:13px;padding:12px 13px;border:1px solid #dbead7;border-radius:13px;background:#f3f9ed;color:#315d42;transition:background .2s,border-color .2s}
+.cash-confirm-status[data-tone="attention"]{border-color:#f2ddbb;background:#fff8eb;color:#805b2b}
+.cash-confirm-status-dot{width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:#77a84b;box-shadow:0 0 0 5px #77a84b1f;animation:cashConfirmDot 2s ease-in-out infinite}
+.cash-confirm-status[data-tone="attention"] .cash-confirm-status-dot{background:#d7974e;box-shadow:0 0 0 5px #d7974e1c}
+.cash-confirm-status strong{display:block;font-size:11px;font-weight:800}
+.cash-confirm-status small{display:block;margin-top:3px;color:#70877b;font-size:10px;line-height:1.35}
+.cash-confirm-status[data-tone="attention"] small{color:#98784b}
+.cash-confirm-summary{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.cash-confirm-summary>div{padding:12px 11px;border:1px solid #e4ece5;border-radius:12px;background:#fbfdfb}
+.cash-confirm-summary span{display:block;color:#81938b;font-size:10px;line-height:1.3}
+.cash-confirm-summary strong{display:block;margin-top:7px;color:#2f604b;font:800 14px Manrope,sans-serif;letter-spacing:-.2px;white-space:nowrap}
+.cash-confirm-summary .cash-confirm-difference{border-color:#d8e8c8;background:#f3f9ec}
+.cash-confirm-summary .cash-confirm-difference strong{color:#5c8b41}
+.cash-confirm-summary .cash-confirm-difference[data-tone="negative"]{border-color:#f1d9d1;background:#fff5f1}
+.cash-confirm-summary .cash-confirm-difference[data-tone="negative"] strong{color:#b25f4f}
+.cash-confirm-summary .cash-confirm-difference[data-tone="positive"]{border-color:#f0dfc0;background:#fff9ee}
+.cash-confirm-summary .cash-confirm-difference[data-tone="positive"] strong{color:#a06d35}
+.cash-confirm-lock-note{position:relative;z-index:1;display:flex;align-items:center;gap:9px;margin-bottom:20px;padding:10px 12px;border-radius:10px;background:#f7f9f7;color:#778b82}
+.cash-confirm-lock-note>span{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:#e8f0e6;color:#5f8d43;font-size:15px}
+.cash-confirm-lock-note p{margin:0;font-size:10px;line-height:1.45}
+.cash-confirm-actions{position:relative;z-index:1;display:flex;justify-content:flex-end;gap:9px;margin:0}
+.cash-confirm-actions button{min-height:40px;padding:10px 15px;font-size:11px}
+.cash-confirm-submit{box-shadow:0 9px 18px #194d3e26}
+.cash-confirm-submit span{margin-left:5px;color:var(--lime);font-size:14px}
+@keyframes cashConfirmIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes cashConfirmBackdrop{from{opacity:0}to{opacity:1}}
+@keyframes cashConfirmPop{0%{opacity:0;transform:scale(.62) rotate(-8deg)}65%{opacity:1;transform:scale(1.08) rotate(2deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes cashConfirmPulse{0%,100%{opacity:.35;transform:scale(.96)}50%{opacity:0;transform:scale(1.15)}}
+@keyframes cashConfirmDot{0%,100%{opacity:.72;transform:scale(.9)}50%{opacity:1;transform:scale(1.15)}}
+@media(max-width:520px){.cash-confirm-shell{padding:24px 20px 20px}.cash-closing-confirm-dialog h2{font-size:22px}.cash-confirm-summary{grid-template-columns:1fr 1fr}.cash-confirm-summary .cash-confirm-difference{grid-column:1 / -1}.cash-confirm-actions{display:grid;grid-template-columns:1fr 1.4fr}.cash-confirm-actions button{width:100%}}
+@media(prefers-reduced-motion:reduce){.cash-closing-confirm-dialog,.cash-confirm-icon,.cash-confirm-icon::before,.cash-confirm-status-dot{animation:none}}
+
 
 /* Minha Reserva */
 body.reservation-mode{

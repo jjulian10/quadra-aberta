@@ -71,6 +71,7 @@ let financeActivityTab = 'payments';
 let financeActivityExpanded = false;
 let cashClosingLoading = false;
 let cashClosingBusy = false;
+let cashClosingConfirmationResolver = null;
 let cashClosingData = {
   bookings: [],
   sales: [],
@@ -4507,6 +4508,68 @@ document.querySelectorAll('[data-view]').forEach((button) => {
   };
 });
 
+const cashClosingConfirmDialog = $('#cashClosingConfirmDialog');
+const cashClosingConfirmForm = $('#cashClosingConfirmForm');
+
+function settleCashClosingConfirmation(confirmed) {
+  const resolve = cashClosingConfirmationResolver;
+  cashClosingConfirmationResolver = null;
+  if (cashClosingConfirmDialog?.open) cashClosingConfirmDialog.close();
+  resolve?.(confirmed);
+}
+
+function requestCashClosingConfirmation({ dateLabel, expected, countedTotal, difference }) {
+  const balanced = Math.abs(difference) <= 0.009;
+  const differenceTone = balanced ? 'balanced' : difference < 0 ? 'negative' : 'positive';
+  const differenceLabel = balanced
+    ? 'R$ 0,00'
+    : `${difference < 0 ? '− ' : '+ '}${money(Math.abs(difference))}`;
+  const statusTitle = balanced ? 'Conferência equilibrada' : difference < 0 ? 'Atenção à falta no caixa' : 'Atenção à sobra no caixa';
+  const statusText = balanced
+    ? 'O valor contado está exatamente igual ao esperado.'
+    : difference < 0
+      ? `Faltará ${money(Math.abs(difference))} no fechamento.`
+      : `Haverá uma sobra de ${money(difference)} no fechamento.`;
+
+  if (!cashClosingConfirmDialog || !cashClosingConfirmForm) {
+    return Promise.resolve(window.confirm(`Confirmar o fechamento de ${dateLabel}?\n\nValor esperado: ${money(expected)}\nValor contado: ${money(countedTotal)}\n${statusText}\n\nDepois de concluído, o dia ficará protegido contra alterações.`));
+  }
+
+  $('#cashClosingConfirmDescription').textContent = `Confira os valores antes de proteger o caixa de ${dateLabel}.`;
+  $('#cashClosingConfirmExpected').textContent = money(expected);
+  $('#cashClosingConfirmCounted').textContent = money(countedTotal);
+  const differenceElement = $('#cashClosingConfirmDifference');
+  const differenceCard = differenceElement?.closest('.cash-confirm-difference');
+  if (differenceElement) differenceElement.textContent = differenceLabel;
+  if (differenceCard) differenceCard.dataset.tone = differenceTone;
+  const statusElement = $('#cashClosingConfirmStatus');
+  if (statusElement) statusElement.dataset.tone = balanced ? 'balanced' : 'attention';
+  $('#cashClosingConfirmStatusTitle').textContent = statusTitle;
+  $('#cashClosingConfirmStatusText').textContent = statusText;
+
+  if (cashClosingConfirmationResolver) settleCashClosingConfirmation(false);
+  cashClosingConfirmDialog.showModal();
+  return new Promise((resolve) => {
+    cashClosingConfirmationResolver = resolve;
+  });
+}
+
+if (cashClosingConfirmDialog && cashClosingConfirmForm) {
+  cashClosingConfirmForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    settleCashClosingConfirmation(true);
+  });
+  $('#cancelCashClosingConfirm')?.addEventListener('click', () => settleCashClosingConfirmation(false));
+  $('#closeCashClosingConfirm')?.addEventListener('click', () => settleCashClosingConfirmation(false));
+  cashClosingConfirmDialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    settleCashClosingConfirmation(false);
+  });
+  cashClosingConfirmDialog.addEventListener('click', (event) => {
+    if (event.target === cashClosingConfirmDialog) settleCashClosingConfirmation(false);
+  });
+}
+
 const cashClosingPanel = $('#cashClosingPanel');
 if (cashClosingPanel) {
   cashClosingPanel.addEventListener('click', (event) => {
@@ -4580,12 +4643,12 @@ if (cashClosingPanel) {
       }
       const expected = cashClosingTotals().expected;
       const difference = countedTotal - expected;
-      const differenceText = difference < -0.009
-        ? `Faltará ${money(Math.abs(difference))} no fechamento.`
-        : difference > 0.009
-          ? `Haverá uma sobra de ${money(difference)} no fechamento.`
-          : 'O valor contado está exatamente igual ao esperado.';
-      if (!window.confirm(`Confirmar o fechamento de ${cashClosingDateLabel(day)}?\n\nValor esperado: ${money(expected)}\nValor contado: ${money(countedTotal)}\n${differenceText}\n\nDepois de concluído, o dia ficará protegido contra alterações.`)) return;
+      if (!await requestCashClosingConfirmation({
+        dateLabel: cashClosingDateLabel(day),
+        expected,
+        countedTotal,
+        difference
+      })) return;
 
       cashClosingBusy = true;
       const button = event.target.querySelector('button[type="submit"]');
