@@ -69,6 +69,16 @@ let selectedId = null;
 let profitPeriod = 'day';
 let financeActivityTab = 'payments';
 let financeActivityExpanded = false;
+let cashClosingLoading = false;
+let cashClosingBusy = false;
+let cashClosingData = {
+  bookings: [],
+  sales: [],
+  expenses: [],
+  closing: null,
+  schemaReady: true,
+  schemaError: ''
+};
 let inventoryProducts = [];
 let inventoryMovements = [];
 let inventoryPeriod = 'day';
@@ -1598,6 +1608,16 @@ function ensureEnhancements() {
     panel.style.cssText = 'margin:0 0 27px;background:#fff;border:1px solid #e1e7e3;border-radius:13px;padding:22px 25px;';
     $('#stats').after(panel);
   }
+  if (!$('#cashClosingPanel')) {
+    const panel = document.createElement('section');
+    panel.id = 'cashClosingPanel';
+    const profitPanel = $('#profitPanel');
+    panel.className = 'cash-closing-panel';
+    if (profitPanel) profitPanel.before(panel);
+    else $('#stats').after(panel);
+  } else if ($('#profitPanel')) {
+    $('#profitPanel').before($('#cashClosingPanel'));
+  }
 }
 
 function periodBookings(period) {
@@ -1626,6 +1646,220 @@ function periodCancellationHistory(period) {
     if (period === 'week') return difference >= 0 && difference < 7;
     return difference >= 0 && difference < 30;
   });
+}
+
+function cashClosingDateLabel(value) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+  });
+}
+
+function cashClosingMissingSchema(error) {
+  return Boolean(error) && (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /cash_(expenses|closings)/i.test(error.message || '')
+  );
+}
+
+function cashClosingNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+async function loadCashClosingData() {
+  if (!isAdmin || !arena || view !== 'finance') return false;
+
+  const arenaId = arena.id;
+  const closingDate = day;
+  cashClosingLoading = true;
+  cashClosingData = { ...cashClosingData, schemaError: '' };
+
+  try {
+    const nextDate = new Date(`${closingDate}T12:00:00`);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateValue = localDate(nextDate);
+    const movementStart = new Date(`${closingDate}T00:00:00`).toISOString();
+    const movementEnd = new Date(`${nextDateValue}T00:00:00`).toISOString();
+    const [bookingsResult, salesResult, expensesResult, closingResult] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('id, booking_date, court_id, start_hour, duration, customer_name, status, payment_status, amount, payment_received_amount, payment_provider, payment_confirmed_at')
+        .eq('arena_id', arenaId)
+        .eq('booking_date', closingDate)
+        .in('status', ['pending', 'confirmed'])
+        .order('start_hour'),
+      supabase
+        .from('inventory_movements')
+        .select('id, product_id, movement_type, quantity, total_amount, created_at')
+        .eq('arena_id', arenaId)
+        .eq('movement_type', 'sale')
+        .gte('created_at', movementStart)
+        .lt('created_at', movementEnd)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('cash_expenses')
+        .select('id, expense_date, description, category, payment_method, amount, created_at')
+        .eq('arena_id', arenaId)
+        .eq('expense_date', closingDate)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('cash_closings')
+        .select('id, closing_date, booking_received_total, inventory_sales_total, expenses_total, expected_total, counted_total, difference_total, payment_breakdown, notes, status, closed_at')
+        .eq('arena_id', arenaId)
+        .eq('closing_date', closingDate)
+        .maybeSingle()
+    ]);
+
+    if (bookingsResult.error) throw bookingsResult.error;
+    if (salesResult.error) throw salesResult.error;
+    if (expensesResult.error) {
+      if (cashClosingMissingSchema(expensesResult.error)) {
+        cashClosingData = { bookings: [], sales: [], expenses: [], closing: null, schemaReady: false, schemaError: 'A estrutura do fechamento ainda precisa ser aplicada ao Supabase.' };
+        return false;
+      }
+      throw expensesResult.error;
+    }
+    if (closingResult.error) {
+      if (cashClosingMissingSchema(closingResult.error)) {
+        cashClosingData = { bookings: [], sales: [], expenses: [], closing: null, schemaReady: false, schemaError: 'A estrutura do fechamento ainda precisa ser aplicada ao Supabase.' };
+        return false;
+      }
+      throw closingResult.error;
+    }
+
+    if (arena?.id !== arenaId || day !== closingDate || view !== 'finance') return false;
+
+    cashClosingData = {
+      bookings: bookingsResult.data || [],
+      sales: salesResult.data || [],
+      expenses: expensesResult.data || [],
+      closing: closingResult.data || null,
+      schemaReady: true,
+      schemaError: ''
+    };
+    return true;
+  } catch (error) {
+    console.error('Falha ao carregar fechamento diário.', error);
+    cashClosingData = {
+      ...cashClosingData,
+      schemaReady: !cashClosingMissingSchema(error),
+      schemaError: cashClosingMissingSchema(error)
+        ? 'A estrutura do fechamento ainda precisa ser aplicada ao Supabase.'
+        : 'Não foi possível carregar os dados do fechamento.'
+    };
+    return false;
+  } finally {
+    cashClosingLoading = false;
+  }
+}
+
+function cashClosingTotals() {
+  const bookingReceived = cashClosingData.bookings.reduce((sum, booking) => sum + cashClosingNumber(booking.payment_received_amount), 0);
+  const inventorySales = cashClosingData.sales.reduce((sum, movement) => sum + cashClosingNumber(movement.total_amount), 0);
+  const expenses = cashClosingData.expenses.reduce((sum, expense) => sum + cashClosingNumber(expense.amount), 0);
+  return {
+    bookingReceived,
+    inventorySales,
+    expenses,
+    expected: bookingReceived + inventorySales - expenses,
+    received: bookingReceived + inventorySales
+  };
+}
+
+function cashClosingProductName(productId) {
+  return inventoryProducts.find((product) => product.id === productId)?.name || 'Venda de mercadoria';
+}
+
+function cashClosingMovementRows() {
+  const bookingRows = cashClosingData.bookings
+    .filter((booking) => cashClosingNumber(booking.payment_received_amount) > 0)
+    .map((booking) => ({
+      at: booking.payment_confirmed_at || `${booking.booking_date}T${String(booking.start_hour).padStart(2, '0')}:00:00`,
+      type: 'Reserva',
+      description: `${courts.find((court) => court.id === booking.court_id)?.name || 'Quadra'} · ${booking.start_hour}:00`,
+      method: booking.payment_provider === 'manual' ? 'Manual' : 'Pix',
+      amount: cashClosingNumber(booking.payment_received_amount),
+      tone: 'booking'
+    }));
+  const salesRows = cashClosingData.sales.map((movement) => ({
+    at: movement.created_at,
+    type: 'Mercadoria',
+    description: `${cashClosingProductName(movement.product_id)} · ${movement.quantity} un.`,
+    method: 'Venda',
+    amount: cashClosingNumber(movement.total_amount),
+    tone: 'sale'
+  }));
+  const expenseRows = cashClosingData.expenses.map((expense) => ({
+    at: expense.created_at,
+    type: 'Despesa',
+    description: expense.description,
+    method: ({ cash: 'Dinheiro', pix: 'Pix', card: 'Cartão', other: 'Outro' }[expense.payment_method] || 'Outro'),
+    amount: -cashClosingNumber(expense.amount),
+    tone: 'expense'
+  }));
+  return [...bookingRows, ...salesRows, ...expenseRows]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 8);
+}
+
+function renderCashClosingPanel() {
+  const panel = $('#cashClosingPanel');
+  if (!panel) return;
+  const active = view === 'finance' && isAdmin && Boolean(arena);
+  panel.classList.toggle('hidden', !active);
+  if (!active) { panel.innerHTML = ''; return; }
+
+  if (cashClosingLoading) {
+    panel.innerHTML = '<div class="cash-closing-loading"><span class="payment-dot"></span><strong>Preparando o fechamento diário…</strong><small>Conferindo reservas, vendas e despesas.</small></div>';
+    return;
+  }
+
+  if (!cashClosingData.schemaReady) {
+    panel.innerHTML = `<div class="cash-closing-schema-warning"><span class="cash-closing-warning-icon">!</span><div><strong>Fechamento diário aguardando ativação</strong><p>${esc(cashClosingData.schemaError || 'A estrutura do caixa ainda não está disponível.')}</p><small>A migração de segurança precisa ser aplicada uma única vez no projeto Supabase.</small></div></div>`;
+    return;
+  }
+
+  const totals = cashClosingTotals();
+  const closing = cashClosingData.closing;
+  const closed = Boolean(closing);
+  const progress = closed
+    ? 100
+    : totals.expected > 0
+      ? Math.min(100, Math.round((totals.received / totals.expected) * 100))
+      : 0;
+  const difference = closed ? cashClosingNumber(closing.difference_total) : null;
+  const breakdown = closed ? (closing.payment_breakdown || {}) : {};
+  const differenceLabel = difference === null ? 'Ainda não conferido' : money(difference);
+  const differenceClass = difference === null ? '' : difference < -0.009 ? 'negative' : difference > 0.009 ? 'positive' : 'balanced';
+  const rows = cashClosingMovementRows();
+  const rowMarkup = rows.length
+    ? rows.map((row) => `<tr><td><span class="cash-movement-type ${row.tone}">${esc(row.type)}</span></td><td>${esc(row.description)}</td><td>${esc(row.method)}</td><td class="cash-movement-value ${row.amount < 0 ? 'negative' : ''}">${row.amount < 0 ? '− ' : ''}${money(Math.abs(row.amount))}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="cash-empty-row">Nenhuma movimentação financeira registrada nesta data.</td></tr>';
+
+  panel.innerHTML = `
+    <div class="cash-closing-head">
+      <div><p class="eyebrow">OPERAÇÃO DIÁRIA</p><h2>Fechamento diário de caixa</h2><p>Conferência de reservas, mercadorias e despesas da ${esc(arena.name)}.</p></div>
+      <div class="cash-closing-status ${closed ? 'closed' : 'open'}"><span></span>${closed ? 'Caixa fechado' : 'Caixa em aberto'}</div>
+    </div>
+    <div class="cash-closing-kpis">
+      <article class="cash-closing-kpi"><span>Reservas recebidas</span><strong>${money(closed ? closing.booking_received_total : totals.bookingReceived)}</strong><small>${cashClosingData.bookings.length} reserva(s) na data</small></article>
+      <article class="cash-closing-kpi featured"><span>Mercadorias</span><strong>${money(closed ? closing.inventory_sales_total : totals.inventorySales)}</strong><small>${cashClosingData.sales.length} venda(s) registrada(s)</small></article>
+      <article class="cash-closing-kpi"><span>Despesas</span><strong class="negative">− ${money(closed ? closing.expenses_total : totals.expenses)}</strong><small>${cashClosingData.expenses.length} lançamento(s)</small></article>
+      <article class="cash-closing-kpi"><span>Saldo esperado</span><strong>${money(closed ? closing.expected_total : totals.expected)}</strong><small>${closed ? 'Valor conferido no fechamento' : 'Receitas menos despesas'}</small></article>
+    </div>
+    <div class="cash-closing-main-grid">
+      <section class="cash-closing-summary">
+        <div class="cash-card-heading"><div><h3>Resumo do movimento</h3><p>Entradas e saídas consolidadas do dia.</p></div><span class="cash-closing-date">${esc(cashClosingDateLabel(day))}</span></div>
+        <div class="cash-summary-body"><div class="cash-progress-ring" style="--cash-progress:${progress}%"><div><strong>${progress}%</strong><small>${closed ? 'conferido' : 'recebido'}</small></div></div><div class="cash-summary-legend"><div><span><i class="booking"></i>Reservas de quadra</span><strong>${money(closed ? closing.booking_received_total : totals.bookingReceived)}</strong></div><div><span><i class="sale"></i>Venda de mercadorias</span><strong>${money(closed ? closing.inventory_sales_total : totals.inventorySales)}</strong></div><div><span><i class="expense"></i>Despesas lançadas</span><strong>− ${money(closed ? closing.expenses_total : totals.expenses)}</strong></div><p><b>i</b> O saldo esperado considera apenas valores efetivamente recebidos.</p></div></div>
+      </section>
+      <section class="cash-closing-check">
+        <div class="cash-card-heading"><div><h3>Conferência do caixa</h3><p>${closed ? 'Fechamento concluído e protegido.' : 'Informe o valor encontrado no caixa.'}</p></div><span class="cash-lock-icon">${closed ? '✓' : '◷'}</span></div>
+        ${closed ? `<div class="cash-closed-result"><span class="cash-closed-check">✓</span><div><strong>Caixa fechado com sucesso</strong><small>Realizado em ${esc(dateTimeLabel(closing.closed_at))}</small></div></div><div class="cash-closed-values"><span>Valor contado</span><strong>${money(closing.counted_total)}</strong><span>Diferença</span><strong class="${differenceClass}">${differenceLabel}</strong></div><div class="cash-breakdown-readonly"><span>Pix ${money(breakdown.pix || 0)}</span><span>Cartão ${money(breakdown.card || 0)}</span><span>Dinheiro ${money(breakdown.cash || 0)}</span></div>` : `<form id="cashClosingForm" class="cash-closing-form"><label>Valor contado no caixa<input id="cashCountedTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" required></label><div class="cash-payment-grid"><label>Pix<input id="cashBreakdownPix" type="number" min="0" step="0.01" placeholder="0,00"></label><label>Cartão<input id="cashBreakdownCard" type="number" min="0" step="0.01" placeholder="0,00"></label><label>Dinheiro<input id="cashBreakdownCash" type="number" min="0" step="0.01" placeholder="0,00"></label></div><label>Observação <textarea id="cashClosingNotes" rows="2" maxlength="500" placeholder="Ex.: diferença conferida com o responsável…"></textarea><button class="primary cash-close-submit" type="submit">Conferir e fechar caixa <span>→</span></button><small class="cash-form-note">Depois de fechado, o dia ficará protegido contra alterações.</small></form>`}
+      </section>
+    </div>
+    <section class="cash-expenses-card"><div class="cash-card-heading"><div><h3>Despesas do dia</h3><p>Registre saídas antes de concluir o fechamento.</p></div>${closed ? '<span class="cash-locked-label">Bloqueado após fechamento</span>' : '<button type="button" class="cash-outline-button" data-cash-expense-open>＋ Lançar despesa</button>'}</div><div id="cashExpenseFormWrap" class="cash-expense-form-wrap hidden"><form id="cashExpenseForm" class="cash-expense-form"><label>Descrição<input id="cashExpenseDescription" maxlength="160" required placeholder="Ex.: compra de gelo e copos"></label><label>Categoria<select id="cashExpenseCategory"><option value="Outros">Outros</option><option value="Operação">Operação</option><option value="Manutenção">Manutenção</option><option value="Limpeza">Limpeza</option><option value="Equipe">Equipe</option></select></label><label>Forma de pagamento<select id="cashExpenseMethod"><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="card">Cartão</option><option value="other">Outro</option></select></label><label>Valor<input id="cashExpenseAmount" type="number" min="0.01" step="0.01" required placeholder="0,00"></label><div class="cash-expense-actions"><button type="button" class="secondary" data-cash-expense-cancel>Cancelar</button><button type="submit" class="primary">Salvar despesa</button></div></form></div><div class="cash-expense-list">${cashClosingData.expenses.length ? cashClosingData.expenses.map((expense) => `<div class="cash-expense-row"><span class="cash-expense-icon">−</span><div><strong>${esc(expense.description)}</strong><small>${esc(expense.category)} · ${esc(({ cash: 'Dinheiro', pix: 'Pix', card: 'Cartão', other: 'Outro' }[expense.payment_method] || 'Outro'))}</small></div><b>− ${money(expense.amount)}</b></div>`).join('') : '<div class="cash-empty-state">Nenhuma despesa lançada neste dia.</div>'}</div></section>
+    <section class="cash-movements-card"><div class="cash-card-heading"><div><p class="eyebrow">HISTÓRICO DO DIA</p><h3>Movimentações financeiras</h3><p>Reservas recebidas, vendas e despesas em uma única visão.</p></div><span class="cash-history-count">${rows.length} registro(s)</span></div><div class="cash-table-scroll"><table class="cash-movements-table"><thead><tr><th>Tipo</th><th>Descrição</th><th>Origem</th><th>Valor</th></tr></thead><tbody>${rowMarkup}</tbody></table></div></section>`;
 }
 
 function renderProfitPanel(list) {
@@ -1822,7 +2056,11 @@ function renderProfitPanel(list) {
     if (event.target.value) {
       day = event.target.value;
       financeActivityExpanded = false;
-      await refreshBookings();
+      cashClosingLoading = true;
+      render();
+      await Promise.all([refreshBookings(), loadCashClosingData()]);
+      cashClosingLoading = false;
+      render();
     }
   };
 }
@@ -2897,6 +3135,22 @@ async function setView(nextView) {
   if (nextView === 'player' && isAdmin) return;
   if ((nextView === 'admin' || nextView === 'finance' || nextView === 'inventory' || nextView === 'announcements' || nextView === 'settings') && !arena) return;
 
+  if (nextView === 'finance') {
+    view = 'finance';
+    cashClosingLoading = true;
+    render();
+    try {
+      await loadCashClosingData();
+    } catch (error) {
+      console.error(error);
+      toast('Não foi possível carregar o fechamento diário.');
+    } finally {
+      cashClosingLoading = false;
+      render();
+    }
+    return;
+  }
+
   if (nextView === 'settings') {
     view = 'settings';
     arenaSettingsDetail = null;
@@ -2992,12 +3246,14 @@ function render() {
   const masterPanel = $('#masterPanel');
   const merchandisePanel = $('#merchandisePanel');
   const announcementsPanel = $('#announcementsPanel');
+  const cashClosingPanel = $('#cashClosingPanel');
   const publicAnnouncementsPanel = $('#arenaAnnouncementsPublic');
   const settingsPanel = $('#arenaSettingsPanel');
   const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
   if (merchandisePanel) merchandisePanel.classList.toggle('hidden', !inventoryMode);
   if (announcementsPanel) announcementsPanel.classList.toggle('hidden', !announcementsMode);
+  if (cashClosingPanel) cashClosingPanel.classList.toggle('hidden', !(view === 'finance' && isAdmin && Boolean(arena)));
   if (publicAnnouncementsPanel) publicAnnouncementsPanel.classList.add('hidden');
   if (settingsPanel) settingsPanel.classList.toggle('hidden', !settingsMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
@@ -3021,6 +3277,7 @@ function render() {
       profitPanel.style.display = 'none';
       profitPanel.innerHTML = '';
     }
+    if (cashClosingPanel) { cashClosingPanel.classList.add('hidden'); cashClosingPanel.innerHTML = ''; }
 
     renderMasterPanel();
     return;
@@ -3043,6 +3300,7 @@ function render() {
     $('#bottom').style.display = 'none';
     const profitPanel = $('#profitPanel');
     if (profitPanel) { profitPanel.style.display = 'none'; profitPanel.innerHTML = ''; }
+    if (cashClosingPanel) { cashClosingPanel.classList.add('hidden'); cashClosingPanel.innerHTML = ''; }
     renderArenaSettings();
     return;
   }
@@ -3062,6 +3320,7 @@ function render() {
     $('#bottom').style.display = 'none';
     const profitPanel = $('#profitPanel');
     if (profitPanel) { profitPanel.style.display = 'none'; profitPanel.innerHTML = ''; }
+    if (cashClosingPanel) { cashClosingPanel.classList.add('hidden'); cashClosingPanel.innerHTML = ''; }
     renderAnnouncementsPanel();
     return;
   }
@@ -3084,6 +3343,7 @@ function render() {
       profitPanel.style.display = 'none';
       profitPanel.innerHTML = '';
     }
+    if (cashClosingPanel) { cashClosingPanel.classList.add('hidden'); cashClosingPanel.innerHTML = ''; }
 
     renderMerchandisePanel();
     return;
@@ -3131,6 +3391,7 @@ function render() {
       profitPanel.style.display = 'none';
       profitPanel.innerHTML = '';
     }
+    if (cashClosingPanel) { cashClosingPanel.classList.add('hidden'); cashClosingPanel.innerHTML = ''; }
 
     $('#courtFilter').innerHTML = '<option value="all">Todas as quadras</option>';
     $('#courtFilter').disabled = true;
@@ -3173,6 +3434,7 @@ function render() {
     : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', Math.max(totalHours - occupiedHours - blockedHours, 0), 'Na data selecionada', '◌']])
     .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
   renderProfitPanel(periodBookings(profitPeriod));
+  renderCashClosingPanel();
 
   const columns = courts.map((court, index) => ({ ...court, index })).filter((court) => filter === 'all' || String(court.index) === filter);
   $('#schedule').style.setProperty('--cols', columns.length);
@@ -4244,6 +4506,114 @@ document.querySelectorAll('[data-view]').forEach((button) => {
     setView(button.dataset.view);
   };
 });
+
+const cashClosingPanel = $('#cashClosingPanel');
+if (cashClosingPanel) {
+  cashClosingPanel.addEventListener('click', (event) => {
+    const openExpense = event.target.closest('[data-cash-expense-open]');
+    const cancelExpense = event.target.closest('[data-cash-expense-cancel]');
+    if (openExpense) {
+      $('#cashExpenseFormWrap')?.classList.remove('hidden');
+      $('#cashExpenseDescription')?.focus();
+    }
+    if (cancelExpense) {
+      $('#cashExpenseForm')?.reset();
+      $('#cashExpenseFormWrap')?.classList.add('hidden');
+    }
+  });
+
+  cashClosingPanel.addEventListener('submit', async (event) => {
+    if (event.target.id === 'cashExpenseForm') {
+      event.preventDefault();
+      if (!arena || cashClosingData.closing) return;
+      const description = $('#cashExpenseDescription').value.trim();
+      const category = $('#cashExpenseCategory').value;
+      const paymentMethod = $('#cashExpenseMethod').value;
+      const amount = Number($('#cashExpenseAmount').value || 0);
+      if (description.length < 2 || amount <= 0) {
+        toast('Informe a descrição e um valor válido para a despesa.');
+        return;
+      }
+      const button = event.target.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = 'Salvando…';
+      try {
+        const { error } = await supabase.from('cash_expenses').insert({
+          arena_id: arena.id,
+          expense_date: day,
+          description,
+          category,
+          payment_method: paymentMethod,
+          amount
+        });
+        if (error) throw error;
+        toast('Despesa lançada no fechamento do dia.');
+        await loadCashClosingData();
+        render();
+      } catch (error) {
+        console.error(error);
+        toast('Não foi possível lançar a despesa.');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Salvar despesa';
+      }
+      return;
+    }
+
+    if (event.target.id === 'cashClosingForm') {
+      event.preventDefault();
+      if (!arena || cashClosingData.closing || cashClosingBusy) return;
+      const countedTotal = Number($('#cashCountedTotal').value || 0);
+      const breakdown = {
+        pix: Number($('#cashBreakdownPix').value || 0),
+        card: Number($('#cashBreakdownCard').value || 0),
+        cash: Number($('#cashBreakdownCash').value || 0)
+      };
+      const breakdownTotal = breakdown.pix + breakdown.card + breakdown.cash;
+      if (!Number.isFinite(countedTotal) || countedTotal < 0) {
+        toast('Informe o valor contado no caixa.');
+        return;
+      }
+      if (breakdownTotal > 0 && Math.abs(breakdownTotal - countedTotal) > 0.01) {
+        toast('A divisão por forma de pagamento precisa fechar com o valor contado.');
+        return;
+      }
+      const expected = cashClosingTotals().expected;
+      const difference = countedTotal - expected;
+      const differenceText = difference < -0.009
+        ? `Faltará ${money(Math.abs(difference))} no fechamento.`
+        : difference > 0.009
+          ? `Haverá uma sobra de ${money(difference)} no fechamento.`
+          : 'O valor contado está exatamente igual ao esperado.';
+      if (!window.confirm(`Confirmar o fechamento de ${cashClosingDateLabel(day)}?\n\nValor esperado: ${money(expected)}\nValor contado: ${money(countedTotal)}\n${differenceText}\n\nDepois de concluído, o dia ficará protegido contra alterações.`)) return;
+
+      cashClosingBusy = true;
+      const button = event.target.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = 'Concluindo fechamento…';
+      try {
+        const { error } = await supabase.rpc('close_cash_day', {
+          target_arena_id: arena.id,
+          target_date: day,
+          target_counted_total: countedTotal,
+          target_payment_breakdown: breakdown,
+          target_notes: $('#cashClosingNotes').value.trim() || null
+        });
+        if (error) throw error;
+        toast('Caixa fechado e registrado com sucesso.');
+        await loadCashClosingData();
+        render();
+      } catch (error) {
+        console.error(error);
+        toast(error?.message || 'Não foi possível concluir o fechamento.');
+      } finally {
+        cashClosingBusy = false;
+        button.disabled = false;
+        button.textContent = 'Conferir e fechar caixa →';
+      }
+    }
+  });
+}
 
 const merchandisePanel = $('#merchandisePanel');
 if (merchandisePanel) {
