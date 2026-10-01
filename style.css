@@ -2993,10 +2993,14 @@ body.admin-session .arena-visibility-note{
 .announcement-action-button.delete{background:#fff3f1;color:#b84a3e;border-color:#f3ded9}
 .announcement-admin-empty{padding:35px 20px;text-align:center;color:var(--muted);font-size:13px}
 
-.announcement-dialog{width:min(980px,calc(100% - 30px));padding:28px}
+.announcement-dialog{width:min(1120px,calc(100% - 30px));max-height:calc(100dvh - 32px);padding:30px 34px;overflow-y:auto}
+.announcement-dialog[open]{animation:announcementDialogIn .26s cubic-bezier(.2,.75,.3,1)}
 .announcement-dialog .dialog-heading h2{font-size:23px}
-.announcement-form-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(290px,.75fr);gap:24px}
+.announcement-form-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.95fr);gap:22px}
 .announcement-form-main,.announcement-form-side{min-width:0}
+.announcement-form-section-label{margin:0 0 18px;color:#638071;font-size:10px;font-weight:800;letter-spacing:.12em}
+.announcement-dialog .login-intro{padding-bottom:18px;border-bottom:1px solid #e7ede6}
+.announcement-dialog input:focus-visible,.announcement-dialog select:focus-visible,.announcement-dialog textarea:focus-visible{outline:2px solid #83b96b;outline-offset:1px;box-shadow:0 0 0 4px #c5f27730}
 .announcement-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .announcement-character-count{display:block;text-align:right;margin-top:4px;color:#8a9791;font-size:10px}
 .announcement-image-field{margin-bottom:17px}
@@ -3025,7 +3029,7 @@ body.admin-session .arena-visibility-note{
 .announcement-feature-toggle strong{font-size:12px}
 .announcement-feature-toggle small{font-size:10px;color:var(--muted);margin-top:3px}
 .announcement-period-card{
-  padding:16px;border:1px solid #e3e9e3;border-radius:13px;background:#fafcf9;
+  padding:18px;border:1px solid #dce7da;border-radius:13px;background:#f7faf5;
 }
 .announcement-period-card>strong{display:block;font-size:12px;margin-bottom:13px}
 .announcement-form-tip{
@@ -3038,7 +3042,7 @@ body.admin-session .arena-visibility-note{
 .announcement-form-tip strong,.announcement-form-tip small{display:block}
 .announcement-form-tip strong{font-size:11px}
 .announcement-form-tip small{font-size:10px;line-height:1.45;margin-top:3px}
-.announcement-live-preview{margin-top:13px}
+.announcement-live-preview{margin-top:16px;padding:18px;border:1px solid #dce7da;border-radius:13px;background:#fff}
 .announcement-live-preview>span{display:block;font-size:9px;font-weight:800;letter-spacing:.12em;color:#7c8c84;margin-bottom:7px}
 .announcement-preview-card{
   position:relative;overflow:hidden;min-height:150px;padding:18px;border-radius:13px;color:#fff;
@@ -3052,8 +3056,10 @@ body.admin-session .arena-visibility-note{
 .announcement-preview-card .announcement-public-type{margin-bottom:8px}
 .announcement-preview-card strong{display:block;font:800 20px/1.08 Manrope,sans-serif;max-width:300px}
 .announcement-preview-card p{color:#e6f0e8;font-size:10px;line-height:1.45;margin:7px 0 0;max-width:330px}
-.announcement-dialog-actions{justify-content:flex-end;margin-top:18px}
+.announcement-dialog-actions{justify-content:flex-end;margin-top:18px;padding-top:17px;border-top:1px solid #e7ede6}
 .announcement-dialog-actions button{width:auto;min-width:145px}
+@keyframes announcementDialogIn{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.announcement-dialog[open]{animation:none}}
 
 .arena-announcements-public{margin:-5px 0 24px;animation:announcementSectionIn .45s cubic-bezier(.2,.75,.3,1)}
 .announcement-public-head{
@@ -3164,6 +3170,8 @@ body.admin-session .arena-visibility-note{
   .announcement-dialog{padding:22px}
 }
 @media(max-width:560px){
+  .announcement-dialog{width:calc(100% - 18px);max-height:calc(100dvh - 18px);padding:18px}
+  .announcement-form-section-label{margin-bottom:12px}
   .announcement-admin-head{display:block}
   .announcement-new-button{width:100%;margin-top:14px}
   .announcement-admin-row{grid-template-columns:1fr}
