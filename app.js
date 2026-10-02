@@ -67,9 +67,13 @@ let unavailableArenaStatus = '';
 let filter = 'all';
 let selectedId = null;
 let profitPeriod = 'day';
+let financeSection = 'closing';
 let financeActivityTab = 'payments';
 let financeActivityExpanded = false;
 let cashClosingLoading = false;
+let cashClosingHistoryLoading = false;
+let cashClosingHistoryRange = '30';
+let cashClosingHistory = [];
 let cashClosingBusy = false;
 let cashClosingConfirmationResolver = null;
 let cashClosingData = {
@@ -1619,6 +1623,17 @@ function ensureEnhancements() {
   } else if ($('#profitPanel')) {
     $('#profitPanel').before($('#cashClosingPanel'));
   }
+  if (!$('#financeSubnav')) {
+    const nav = document.createElement('nav');
+    nav.id = 'financeSubnav';
+    nav.className = 'finance-subnav hidden';
+    nav.setAttribute('aria-label', 'Seções do financeiro');
+    const anchor = $('#cashClosingPanel') || $('#profitPanel');
+    if (anchor) anchor.before(nav);
+  } else {
+    const anchor = $('#cashClosingPanel') || $('#profitPanel');
+    if (anchor && $('#financeSubnav').nextElementSibling !== anchor) anchor.before($('#financeSubnav'));
+  }
 }
 
 function periodBookings(period) {
@@ -1666,6 +1681,154 @@ function cashClosingMissingSchema(error) {
 function cashClosingNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function cashClosingHistoryFiltered() {
+  const reference = new Date(`${today}T12:00:00`);
+  return cashClosingHistory.filter((closing) => {
+    const closingDate = new Date(`${closing.closing_date}T12:00:00`);
+    const difference = Math.round((reference - closingDate) / 86400000);
+    if (difference < 0) return false;
+    if (cashClosingHistoryRange === 'today') return difference === 0;
+    if (cashClosingHistoryRange === 'yesterday') return difference === 1;
+    if (cashClosingHistoryRange === '7') return difference < 7;
+    if (cashClosingHistoryRange === 'all') return true;
+    return difference < 30;
+  });
+}
+
+function cashClosingHistoryWeekday(value) {
+  return new Date(`${value}T12:00:00`)
+    .toLocaleDateString('pt-BR', { weekday: 'short' })
+    .replace('.', '');
+}
+
+async function loadCashClosingHistory() {
+  if (!isAdmin || !arena || view !== 'finance') return false;
+
+  const arenaId = arena.id;
+  cashClosingHistoryLoading = true;
+  try {
+    const { data, error } = await supabase
+      .from('cash_closings')
+      .select('id, closing_date, booking_received_total, inventory_sales_total, expenses_total, expected_total, counted_total, difference_total, status, closed_at')
+      .eq('arena_id', arenaId)
+      .lte('closing_date', today)
+      .order('closing_date', { ascending: false });
+
+    if (error) {
+      if (cashClosingMissingSchema(error)) {
+        cashClosingHistory = [];
+        return false;
+      }
+      throw error;
+    }
+
+    if (arena?.id !== arenaId || view !== 'finance') return false;
+    cashClosingHistory = data || [];
+    return true;
+  } catch (error) {
+    console.error('Falha ao carregar histórico de fechamentos.', error);
+    cashClosingHistory = [];
+    return false;
+  } finally {
+    cashClosingHistoryLoading = false;
+  }
+}
+
+function renderFinanceSubnav() {
+  const nav = $('#financeSubnav');
+  if (!nav) return;
+
+  const active = view === 'finance' && isAdmin && Boolean(arena);
+  nav.classList.toggle('hidden', !active);
+  if (!active) {
+    nav.innerHTML = '';
+    return;
+  }
+
+  nav.innerHTML = `
+    <button type="button" class="${financeSection === 'closing' ? 'active' : ''}" data-finance-section="closing" aria-pressed="${financeSection === 'closing'}">
+      <span class="finance-subnav-icon" aria-hidden="true">▣</span>
+      <span>Fechamento diário</span>
+    </button>
+    <button type="button" class="${financeSection === 'dashboard' ? 'active' : ''}" data-finance-section="dashboard" aria-pressed="${financeSection === 'dashboard'}">
+      <span class="finance-subnav-icon" aria-hidden="true">▥</span>
+      <span>Dashboard da arena</span>
+    </button>`;
+
+  nav.querySelectorAll('[data-finance-section]').forEach((button) => {
+    button.onclick = async () => {
+      const nextSection = button.dataset.financeSection;
+      if (!['closing', 'dashboard'].includes(nextSection) || nextSection === financeSection) return;
+      financeSection = nextSection;
+      financeActivityExpanded = false;
+
+      if (financeSection === 'closing') {
+        cashClosingLoading = true;
+        cashClosingHistoryLoading = true;
+        render();
+        await Promise.all([loadCashClosingData(), loadCashClosingHistory()]);
+      }
+      render();
+    };
+  });
+}
+
+function renderCashClosingHistory() {
+  const filtered = cashClosingHistoryFiltered();
+  const allVisible = cashClosingHistoryRange === 'all';
+  const hasOlderRecords = !allVisible && cashClosingHistory.length > filtered.length;
+
+  const filters = [
+    ['today', 'Hoje'],
+    ['yesterday', 'Ontem'],
+    ['7', 'Últimos 7 dias'],
+    ['30', 'Últimos 30 dias']
+  ].map(([value, label]) => `
+    <button type="button" class="${cashClosingHistoryRange === value ? 'active' : ''}" data-cash-history-range="${value}">${label}</button>
+  `).join('');
+
+  let body;
+  if (cashClosingHistoryLoading) {
+    body = '<tr><td colspan="7"><div class="cash-history-loading"><span class="payment-dot"></span>Carregando fechamentos anteriores…</div></td></tr>';
+  } else if (filtered.length) {
+    body = filtered.map((closing) => {
+      const statusLabel = closing.status === 'closed' || !closing.status ? 'Fechado' : closing.status;
+      return `
+        <tr>
+          <td><strong>${esc(compactDateLabel(closing.closing_date))}</strong><small>${esc(cashClosingHistoryWeekday(closing.closing_date))}</small></td>
+          <td>${money(cashClosingNumber(closing.booking_received_total))}</td>
+          <td>${money(cashClosingNumber(closing.inventory_sales_total))}</td>
+          <td class="negative">− ${money(cashClosingNumber(closing.expenses_total))}</td>
+          <td><strong>${money(cashClosingNumber(closing.expected_total))}</strong></td>
+          <td><span class="cash-history-status"><i></i>${esc(statusLabel)}</span></td>
+          <td><button type="button" class="cash-history-detail" data-cash-history-date="${esc(closing.closing_date)}"><span aria-hidden="true">◉</span> Ver detalhes</button></td>
+        </tr>`;
+    }).join('');
+  } else {
+    body = '<tr><td colspan="7"><div class="cash-history-empty">Nenhum fechamento encontrado neste período.</div></td></tr>';
+  }
+
+  return `
+    <section class="cash-closing-history">
+      <div class="cash-history-heading">
+        <div>
+          <p class="eyebrow">HISTÓRICO FINANCEIRO</p>
+          <h3>Histórico de fechamentos</h3>
+          <p>Consulte os resultados de dias anteriores e compare o desempenho da arena.</p>
+        </div>
+        <div class="cash-history-filters" aria-label="Período do histórico">${filters}</div>
+      </div>
+      <div class="cash-history-table-wrap">
+        <table class="cash-history-table">
+          <thead><tr><th>Data</th><th>Reservas recebidas</th><th>Mercadorias</th><th>Despesas</th><th>Saldo final</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      ${hasOlderRecords ? '<div class="cash-history-footer"><button type="button" data-cash-history-range="all">Ver histórico completo <span aria-hidden="true">→</span></button></div>' : ''}
+      ${allVisible && cashClosingHistory.length ? `<div class="cash-history-footer is-complete"><span>${cashClosingHistory.length} fechamento(s) registrado(s)</span><button type="button" data-cash-history-range="30">Voltar aos últimos 30 dias</button></div>` : ''}
+    </section>`;
 }
 
 async function loadCashClosingData() {
@@ -1807,7 +1970,7 @@ function cashClosingMovementRows() {
 function renderCashClosingPanel() {
   const panel = $('#cashClosingPanel');
   if (!panel) return;
-  const active = view === 'finance' && isAdmin && Boolean(arena);
+  const active = view === 'finance' && financeSection === 'closing' && isAdmin && Boolean(arena);
   panel.classList.toggle('hidden', !active);
   if (!active) { panel.innerHTML = ''; return; }
 
@@ -1860,14 +2023,16 @@ function renderCashClosingPanel() {
       </section>
     </div>
     <section class="cash-expenses-card"><div class="cash-card-heading"><div><h3>Despesas do dia</h3><p>Registre saídas antes de concluir o fechamento.</p></div>${closed ? '<span class="cash-locked-label">Bloqueado após fechamento</span>' : '<button type="button" class="cash-outline-button" data-cash-expense-open>＋ Lançar despesa</button>'}</div><div id="cashExpenseFormWrap" class="cash-expense-form-wrap hidden"><form id="cashExpenseForm" class="cash-expense-form"><label>Descrição<input id="cashExpenseDescription" maxlength="160" required placeholder="Ex.: compra de gelo e copos"></label><label>Categoria<select id="cashExpenseCategory"><option value="Outros">Outros</option><option value="Operação">Operação</option><option value="Manutenção">Manutenção</option><option value="Limpeza">Limpeza</option><option value="Equipe">Equipe</option></select></label><label>Forma de pagamento<select id="cashExpenseMethod"><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="card">Cartão</option><option value="other">Outro</option></select></label><label>Valor<input id="cashExpenseAmount" type="number" min="0.01" step="0.01" required placeholder="0,00"></label><div class="cash-expense-actions"><button type="button" class="secondary" data-cash-expense-cancel>Cancelar</button><button type="submit" class="primary">Salvar despesa</button></div></form></div><div class="cash-expense-list">${cashClosingData.expenses.length ? cashClosingData.expenses.map((expense) => `<div class="cash-expense-row"><span class="cash-expense-icon">−</span><div><strong>${esc(expense.description)}</strong><small>${esc(expense.category)} · ${esc(({ cash: 'Dinheiro', pix: 'Pix', card: 'Cartão', other: 'Outro' }[expense.payment_method] || 'Outro'))}</small></div><b>− ${money(expense.amount)}</b></div>`).join('') : '<div class="cash-empty-state">Nenhuma despesa lançada neste dia.</div>'}</div></section>
-    <section class="cash-movements-card"><div class="cash-card-heading"><div><p class="eyebrow">HISTÓRICO DO DIA</p><h3>Movimentações financeiras</h3><p>Reservas recebidas, vendas e despesas em uma única visão.</p></div><span class="cash-history-count">${rows.length} registro(s)</span></div><div class="cash-table-scroll"><table class="cash-movements-table"><thead><tr><th>Tipo</th><th>Descrição</th><th>Origem</th><th>Valor</th></tr></thead><tbody>${rowMarkup}</tbody></table></div></section>`;
+    <section class="cash-movements-card"><div class="cash-card-heading"><div><p class="eyebrow">HISTÓRICO DO DIA</p><h3>Movimentações financeiras</h3><p>Reservas recebidas, vendas e despesas em uma única visão.</p></div><span class="cash-history-count">${rows.length} registro(s)</span></div><div class="cash-table-scroll"><table class="cash-movements-table"><thead><tr><th>Tipo</th><th>Descrição</th><th>Origem</th><th>Valor</th></tr></thead><tbody>${rowMarkup}</tbody></table></div></section>
+    ${renderCashClosingHistory()}`;
 }
 
 function renderProfitPanel(list) {
   const panel = $('#profitPanel');
   if (!panel) return;
-  if (view !== 'finance' || !isAdmin) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+  if (view !== 'finance' || financeSection !== 'dashboard' || !isAdmin) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
 
+  panel.classList.add('finance-dashboard-panel');
   panel.style.display = 'block';
 
   const fullyPaid = list.filter((booking) => booking.paid);
@@ -2059,7 +2224,7 @@ function renderProfitPanel(list) {
       financeActivityExpanded = false;
       cashClosingLoading = true;
       render();
-      await Promise.all([refreshBookings(), loadCashClosingData()]);
+      await Promise.all([refreshBookings(), loadCashClosingData(), loadCashClosingHistory()]);
       cashClosingLoading = false;
       render();
     }
@@ -3138,15 +3303,19 @@ async function setView(nextView) {
 
   if (nextView === 'finance') {
     view = 'finance';
+    financeSection = 'closing';
+    cashClosingHistoryRange = '30';
     cashClosingLoading = true;
+    cashClosingHistoryLoading = true;
     render();
     try {
-      await loadCashClosingData();
+      await Promise.all([loadCashClosingData(), loadCashClosingHistory()]);
     } catch (error) {
       console.error(error);
-      toast('Não foi possível carregar o fechamento diário.');
+      toast('Não foi possível carregar os dados financeiros.');
     } finally {
       cashClosingLoading = false;
+      cashClosingHistoryLoading = false;
       render();
     }
     return;
@@ -3248,13 +3417,15 @@ function render() {
   const merchandisePanel = $('#merchandisePanel');
   const announcementsPanel = $('#announcementsPanel');
   const cashClosingPanel = $('#cashClosingPanel');
+  const financeSubnav = $('#financeSubnav');
   const publicAnnouncementsPanel = $('#arenaAnnouncementsPublic');
   const settingsPanel = $('#arenaSettingsPanel');
   const partnerSpotlight = $('#partnerSpotlight');
   if (masterPanel) masterPanel.classList.toggle('hidden', !masterMode);
   if (merchandisePanel) merchandisePanel.classList.toggle('hidden', !inventoryMode);
   if (announcementsPanel) announcementsPanel.classList.toggle('hidden', !announcementsMode);
-  if (cashClosingPanel) cashClosingPanel.classList.toggle('hidden', !(view === 'finance' && isAdmin && Boolean(arena)));
+  if (cashClosingPanel) cashClosingPanel.classList.toggle('hidden', !(view === 'finance' && financeSection === 'closing' && isAdmin && Boolean(arena)));
+  if (financeSubnav) financeSubnav.classList.toggle('hidden', !(view === 'finance' && isAdmin && Boolean(arena)));
   if (publicAnnouncementsPanel) publicAnnouncementsPanel.classList.add('hidden');
   if (settingsPanel) settingsPanel.classList.toggle('hidden', !settingsMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
@@ -3434,6 +3605,7 @@ function render() {
     ? [['Reservas do dia', list.length, 'Confirmadas e aguardando', '▦'], ['Ocupação', Math.round((occupiedHours + blockedHours) / totalHours * 100) + '%', `${blockedHours}h bloqueadas nesta data`, '◷'], ['Recebido', money(list.reduce((sum, booking) => sum + Number(booking.paidAmount || 0), 0)), 'Valor efetivamente recebido', '↗'], ['A confirmar', pending.length, 'Solicitações aguardando você', '◌']]
     : [['Quadras', courts.length, `${courts.length} espaços para jogar`, '▦'], ['Reserva', 'Até 3 horas', 'Escolha a duração', '◷'], ['A partir de', money(startingPrice), 'Por quadra / hora', '↗'], ['Horários livres', Math.max(totalHours - occupiedHours - blockedHours, 0), 'Na data selecionada', '◌']])
     .map((stat, index) => `<div class="stat ${index === 2 ? 'featured' : ''}"><div class="stat-label">${stat[0]}<span class="stat-symbol" aria-hidden="true">${stat[3]}</span></div><strong>${stat[1]}</strong><small>${stat[2]}</small></div>`).join('');
+  renderFinanceSubnav();
   renderProfitPanel(periodBookings(profitPeriod));
   renderCashClosingPanel();
 
@@ -4572,7 +4744,28 @@ if (cashClosingConfirmDialog && cashClosingConfirmForm) {
 
 const cashClosingPanel = $('#cashClosingPanel');
 if (cashClosingPanel) {
-  cashClosingPanel.addEventListener('click', (event) => {
+  cashClosingPanel.addEventListener('click', async (event) => {
+    const historyRange = event.target.closest('[data-cash-history-range]');
+    if (historyRange) {
+      cashClosingHistoryRange = historyRange.dataset.cashHistoryRange;
+      render();
+      return;
+    }
+
+    const historyDetail = event.target.closest('[data-cash-history-date]');
+    if (historyDetail) {
+      const targetDate = historyDetail.dataset.cashHistoryDate;
+      if (!targetDate) return;
+      day = targetDate;
+      cashClosingLoading = true;
+      render();
+      await Promise.all([refreshBookings(), loadCashClosingData()]);
+      cashClosingLoading = false;
+      render();
+      $('#cashClosingPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     const openExpense = event.target.closest('[data-cash-expense-open]');
     const cancelExpense = event.target.closest('[data-cash-expense-cancel]');
     if (openExpense) {
@@ -4664,7 +4857,7 @@ if (cashClosingPanel) {
         });
         if (error) throw error;
         toast('Caixa fechado e registrado com sucesso.');
-        await loadCashClosingData();
+        await Promise.all([loadCashClosingData(), loadCashClosingHistory()]);
         render();
       } catch (error) {
         console.error(error);
