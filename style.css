@@ -5910,3 +5910,330 @@ body.admin-session .admin-user-name:not(.hidden){
     grid-column:auto;
   }
 }
+
+
+/* Financeiro: navegação em páginas e histórico de fechamentos */
+.finance-subnav{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0 0 14px;
+  padding:0;
+  animation:financeSectionIn .28s ease both;
+}
+.finance-subnav.hidden{display:none}
+.finance-subnav button{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  min-height:42px;
+  padding:10px 17px;
+  border:1px solid #dce7dd;
+  border-radius:11px;
+  background:linear-gradient(145deg,#fff,#f8fbf7);
+  color:#45665a;
+  font-size:12px;
+  font-weight:800;
+  box-shadow:0 5px 16px #173c300a,inset 0 1px 0 #fff;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease,color .18s ease;
+}
+.finance-subnav button:hover{
+  filter:none;
+  transform:translateY(-1px);
+  border-color:#c8dcc9;
+  background:#fff;
+  box-shadow:0 8px 20px #173c3012;
+}
+.finance-subnav button.active{
+  border-color:#184b3b;
+  background:linear-gradient(135deg,#123d32,#1d6149);
+  color:#fff;
+  box-shadow:0 10px 24px #174a3a24,inset 0 1px 0 #ffffff16;
+}
+.finance-subnav button.active::after{
+  content:"";
+  position:absolute;
+  left:14px;
+  right:14px;
+  bottom:-1px;
+  height:2px;
+  border-radius:10px;
+  background:linear-gradient(90deg,transparent,var(--lime),transparent);
+  opacity:.9;
+}
+.finance-subnav-icon{
+  display:grid;
+  place-items:center;
+  width:23px;
+  height:23px;
+  border-radius:7px;
+  background:#edf5e9;
+  color:#4b7a50;
+  font-size:11px;
+  transition:background .18s ease,color .18s ease,transform .18s ease;
+}
+.finance-subnav button.active .finance-subnav-icon{
+  background:#ffffff16;
+  color:var(--lime);
+}
+.finance-subnav button:hover .finance-subnav-icon{transform:scale(1.04)}
+
+#profitPanel.finance-dashboard-panel{
+  position:relative;
+  overflow:hidden;
+  margin-bottom:27px!important;
+  border:1px solid #dde8df!important;
+  border-radius:17px!important;
+  background:linear-gradient(160deg,#ffffff 0%,#fcfefb 72%,#f5faf1 100%)!important;
+  padding:24px 26px!important;
+  box-shadow:0 18px 46px #173c3010;
+  animation:financeSectionIn .34s cubic-bezier(.2,.8,.2,1) both;
+}
+#profitPanel.finance-dashboard-panel::before{
+  content:"";
+  position:absolute;
+  z-index:0;
+  width:250px;
+  height:250px;
+  top:-175px;
+  right:-105px;
+  border-radius:50%;
+  background:radial-gradient(circle,#c5f27730,transparent 68%);
+  pointer-events:none;
+}
+#profitPanel.finance-dashboard-panel>*{position:relative;z-index:1}
+#profitPanel [data-profit-period]{
+  cursor:pointer;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease!important;
+}
+#profitPanel [data-profit-period]:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 14px #173c3010;
+}
+#profitPanel #financeDate{
+  transition:border-color .18s ease,box-shadow .18s ease;
+}
+#profitPanel #financeDate:focus{
+  border-color:#7daa72;
+  box-shadow:0 0 0 3px #9acb6820;
+  outline:none;
+}
+
+.cash-closing-panel{
+  animation:financeSectionIn .34s cubic-bezier(.2,.8,.2,1) both;
+}
+.cash-closing-history{
+  margin:15px 21px 21px;
+  padding:19px;
+  border:1px solid #e1eae2;
+  border-radius:15px;
+  background:linear-gradient(160deg,#fff 0%,#fbfdfb 100%);
+  box-shadow:0 9px 26px #173c3008;
+}
+.cash-history-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:15px;
+}
+.cash-history-heading .eyebrow{
+  margin:0 0 5px;
+  color:#6d934f;
+}
+.cash-history-heading h3{
+  margin:0;
+  color:var(--ink);
+  font:700 17px Manrope,sans-serif;
+  letter-spacing:-.3px;
+}
+.cash-history-heading p:last-child{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:11px;
+}
+.cash-history-filters{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.cash-history-filters button{
+  min-height:32px;
+  padding:7px 10px;
+  border:1px solid #dfe7df;
+  border-radius:8px;
+  background:#fff;
+  color:#60746b;
+  font-size:10px;
+  font-weight:750;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease,color .16s ease,box-shadow .16s ease;
+}
+.cash-history-filters button:hover{
+  filter:none;
+  transform:translateY(-1px);
+  border-color:#c8dbc8;
+  box-shadow:0 5px 12px #173c300b;
+}
+.cash-history-filters button.active{
+  border-color:#194d3e;
+  background:#194d3e;
+  color:#fff;
+  box-shadow:0 7px 16px #194d3e20;
+}
+.cash-history-table-wrap{
+  overflow-x:auto;
+  border:1px solid #e7eee8;
+  border-radius:11px;
+  background:#fff;
+}
+.cash-history-table{
+  width:100%;
+  min-width:820px;
+  border-collapse:collapse;
+}
+.cash-history-table th{
+  padding:10px 10px;
+  border-bottom:1px solid #e5ece6;
+  background:#f5f8f5;
+  color:#7d9188;
+  text-align:left;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.01em;
+}
+.cash-history-table td{
+  padding:11px 10px;
+  border-bottom:1px solid #edf2ee;
+  color:#526f64;
+  font-size:10px;
+  vertical-align:middle;
+}
+.cash-history-table tbody tr{
+  transition:background .15s ease;
+}
+.cash-history-table tbody tr:hover{
+  background:#fbfdf9;
+}
+.cash-history-table tbody tr:last-child td{border-bottom:0}
+.cash-history-table td:first-child strong{
+  display:inline-block;
+  margin-right:6px;
+  color:#284f42;
+  font-size:10px;
+}
+.cash-history-table td:first-child small{
+  color:#8a9c95;
+  font-size:9px;
+  text-transform:capitalize;
+}
+.cash-history-table td.negative{color:#b45f4f}
+.cash-history-table td:nth-child(5) strong{color:#275742}
+.cash-history-status{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 8px;
+  border-radius:999px;
+  background:#eaf5df;
+  color:#4f7842;
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.cash-history-status i{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:#86bb4f;
+  box-shadow:0 0 0 3px #86bb4f16;
+}
+.cash-history-detail{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:30px;
+  padding:6px 9px;
+  border:1px solid #dce7dd;
+  border-radius:8px;
+  background:#fff;
+  color:#345f50;
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease;
+}
+.cash-history-detail:hover{
+  filter:none;
+  transform:translateX(1px);
+  border-color:#bdd3bf;
+  background:#f6faf3;
+}
+.cash-history-loading,
+.cash-history-empty{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:82px;
+  color:#84968f;
+  font-size:11px;
+}
+.cash-history-footer{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:12px;
+  padding-top:12px;
+}
+.cash-history-footer>button{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:34px;
+  padding:7px 11px;
+  border:1px solid #d4e2d3;
+  border-radius:9px;
+  background:#f6faf2;
+  color:#315b47;
+  font-size:10px;
+  font-weight:800;
+  transition:transform .16s ease,background .16s ease,border-color .16s ease;
+}
+.cash-history-footer>button:hover{
+  filter:none;
+  transform:translateY(-1px);
+  background:#eef7e8;
+  border-color:#bdd3ba;
+}
+.cash-history-footer.is-complete{
+  justify-content:space-between;
+  color:#84958e;
+  font-size:10px;
+}
+@keyframes financeSectionIn{
+  from{opacity:0;transform:translateY(7px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@media(max-width:760px){
+  .finance-subnav{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .finance-subnav button{width:100%;min-width:0;padding:10px 9px;font-size:11px}
+  #profitPanel.finance-dashboard-panel{padding:19px!important}
+  .cash-closing-history{margin:12px;padding:15px}
+  .cash-history-heading{flex-direction:column;gap:11px}
+  .cash-history-filters{justify-content:flex-start;width:100%}
+  .cash-history-filters button{flex:1 1 auto}
+}
+@media(max-width:430px){
+  .finance-subnav{grid-template-columns:1fr}
+  .cash-history-filters{display:grid;grid-template-columns:1fr 1fr}
+  .cash-history-filters button{width:100%}
+  .cash-history-footer,.cash-history-footer.is-complete{align-items:flex-start;flex-direction:column}
+}
+@media(prefers-reduced-motion:reduce){
+  .finance-subnav,#profitPanel.finance-dashboard-panel,.cash-closing-panel{animation:none}
+  .finance-subnav button,.cash-history-filters button,.cash-history-detail,.cash-history-footer>button{transition:none}
+}
