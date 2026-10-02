@@ -216,6 +216,9 @@ let paymentPollTimer = null;
 let paymentCheckInFlight = false;
 let reservationPortalData = null;
 let waitlistSelection = null;
+let adminWaitlistEntries = [];
+let adminWaitlistHistoryExpanded = false;
+let adminWaitlistDetailId = '';
 let cancellationHistory = [];
 let pendingCancellationBookingId = null;
 let rescheduleBooking = null;
@@ -503,6 +506,9 @@ function clearArenaIdentity() {
   hours = [];
   bookings = [];
   scheduleBlocks = [];
+  adminWaitlistEntries = [];
+  adminWaitlistHistoryExpanded = false;
+  adminWaitlistDetailId = '';
   cancellationHistory = [];
   pendingCancellationBookingId = null;
   inventoryProducts = [];
@@ -1385,7 +1391,7 @@ async function loadBookings() {
     const firstDate = new Date(reference);
     firstDate.setDate(firstDate.getDate() - 29);
 
-    const [bookingResult, blockResult, cancellationResult] = await Promise.all([
+    const [bookingResult, blockResult, cancellationResult, waitlistResult] = await Promise.all([
       supabase
         .from('bookings')
         .select('id, booking_date, court_id, start_hour, duration, customer_name, customer_phone, status, payment_status, amount, deposit_amount, payment_received_amount, payment_provider, payment_confirmed_at')
@@ -1405,17 +1411,25 @@ async function loadBookings() {
         .select('id, booking_id, booking_date, start_hour, duration, court_name, customer_name, booking_amount, payment_received_amount, payment_status, cancellation_reason, cancelled_at')
         .eq('arena_id', arenaSnapshot.id)
         .order('cancelled_at', { ascending: false })
+        .limit(200),
+      supabase
+        .from('waitlist_entries')
+        .select('id, court_id, booking_date, start_hour, duration, customer_name, customer_phone, status, notified_at, created_at')
+        .eq('arena_id', arenaSnapshot.id)
+        .order('created_at', { ascending: false })
         .limit(200)
     ]);
 
     if (bookingResult.error) throw bookingResult.error;
     if (blockResult.error) throw blockResult.error;
     if (cancellationResult.error) throw cancellationResult.error;
+    if (waitlistResult.error) throw waitlistResult.error;
     if (!stillCurrent()) return false;
 
     bookings = bookingResult.data.map((booking) => mapBooking(booking));
     scheduleBlocks = blockResult.data.map((block) => mapScheduleBlock(block));
     cancellationHistory = cancellationResult.data.map((entry) => mapCancellation(entry));
+    adminWaitlistEntries = waitlistResult.data || [];
     return true;
   }
 
@@ -1511,6 +1525,16 @@ async function syncBookingsRealtime() {
         event: '*',
         schema: 'public',
         table: 'schedule_blocks',
+        filter: `arena_id=eq.${arenaId}`
+      },
+      scheduleRefresh
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'waitlist_entries',
         filter: `arena_id=eq.${arenaId}`
       },
       scheduleRefresh
@@ -3370,6 +3394,320 @@ async function setView(nextView) {
   render();
 }
 
+
+function adminWaitlistCourt(entry) {
+  return courts.find((court) => court.id === entry?.court_id) || null;
+}
+
+function adminWaitlistIsAvailable(entry) {
+  if (!entry || entry.status !== 'waiting' || entry.booking_date !== day || entry.booking_date < today) return false;
+  const courtIndex = courts.findIndex((court) => court.id === entry.court_id);
+  return courtIndex >= 0 && isAvailable(courtIndex, Number(entry.start_hour), Number(entry.duration));
+}
+
+function adminWaitlistStatusMeta(entry) {
+  const effectiveStatus = entry?.status === 'waiting' && entry?.booking_date < today
+    ? 'expired'
+    : entry?.status;
+  return {
+    waiting: { label: 'Aguardando', tone: 'waiting' },
+    notified: { label: 'Notificado', tone: 'notified' },
+    converted: { label: 'Convertido em reserva', tone: 'converted' },
+    cancelled: { label: 'Encerrado', tone: 'cancelled' },
+    expired: { label: 'Expirado', tone: 'expired' }
+  }[effectiveStatus] || { label: 'Aguardando', tone: 'waiting' };
+}
+
+function adminWaitlistInitials(name = '') {
+  return String(name || 'Jogador')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'J';
+}
+
+function adminWaitlistPosition(entry) {
+  if (!entry || entry.status !== 'waiting') return null;
+  const queue = adminWaitlistEntries
+    .filter((item) =>
+      item.status === 'waiting' &&
+      item.court_id === entry.court_id &&
+      item.booking_date === entry.booking_date &&
+      Number(item.start_hour) === Number(entry.start_hour) &&
+      Number(item.duration) === Number(entry.duration)
+    )
+    .slice()
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const index = queue.findIndex((item) => item.id === entry.id);
+  return index >= 0 ? { position: index + 1, total: queue.length } : null;
+}
+
+function adminWaitlistTimeLabel(entry) {
+  const start = Number(entry?.start_hour || 0);
+  const end = start + Number(entry?.duration || 1);
+  return `${String(start).padStart(2, '0')}:00–${String(end).padStart(2, '0')}:00`;
+}
+
+function adminWaitlistCustomerWhatsapp(entry) {
+  let digits = String(entry?.customer_phone || '').replace(/\D/g, '');
+  if (digits && digits.length <= 11) digits = '55' + digits;
+  if (!digits) return '#';
+
+  const court = adminWaitlistCourt(entry);
+  const available = adminWaitlistIsAvailable(entry);
+  const intro = available
+    ? 'A vaga que você estava aguardando ficou disponível'
+    : 'Estou entrando em contato sobre sua lista de espera';
+  const message = `Olá, ${entry.customer_name}! Aqui é da ${arena?.name || 'arena'}. ${intro} no Quadra Aberta.\n\nQuadra: ${court?.name || 'Quadra'}\nData: ${bookingFullDateLabel(entry.booking_date)}\nHorário: ${adminWaitlistTimeLabel(entry)}\n\nSe ainda tiver interesse, me avise para confirmarmos seu agendamento.`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
+function adminWaitlistHistoryEntries() {
+  return adminWaitlistEntries
+    .filter((entry) => entry.status !== 'waiting' || entry.booking_date < today)
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.notified_at || a.created_at).getTime();
+      const bTime = new Date(b.notified_at || b.created_at).getTime();
+      return bTime - aTime;
+    });
+}
+
+function renderAdminWaitlistPanel() {
+  const panel = $('#adminWaitlistPanel');
+  if (!panel) return;
+
+  const activeView = isAdmin && view === 'admin' && Boolean(arena);
+  panel.classList.toggle('hidden', !activeView);
+  if (!activeView) {
+    panel.innerHTML = '';
+    return;
+  }
+
+  const activeEntries = adminWaitlistEntries
+    .filter((entry) => entry.status === 'waiting' && entry.booking_date === day && entry.booking_date >= today)
+    .slice()
+    .sort((a, b) => {
+      const availabilityDifference = Number(adminWaitlistIsAvailable(b)) - Number(adminWaitlistIsAvailable(a));
+      if (availabilityDifference) return availabilityDifference;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  const availableEntries = activeEntries.filter((entry) => adminWaitlistIsAvailable(entry));
+  const notifiedToday = adminWaitlistEntries.filter((entry) =>
+    entry.status === 'notified' &&
+    entry.notified_at &&
+    localDate(new Date(entry.notified_at)) === today
+  ).length;
+  const history = adminWaitlistHistoryEntries();
+  const visibleHistory = adminWaitlistHistoryExpanded ? history : history.slice(0, 5);
+
+  const activeMarkup = activeEntries.length
+    ? activeEntries.map((entry) => {
+      const court = adminWaitlistCourt(entry);
+      const available = adminWaitlistIsAvailable(entry);
+      const position = adminWaitlistPosition(entry);
+      return `
+        <article class="admin-waitlist-row ${available ? 'is-available' : ''}">
+          <span class="admin-waitlist-avatar" aria-hidden="true">${esc(adminWaitlistInitials(entry.customer_name))}</span>
+          <div class="admin-waitlist-person">
+            <div class="admin-waitlist-name-line">
+              <strong>${esc(entry.customer_name)}</strong>
+              ${available
+                ? '<span class="admin-waitlist-available-badge"><i></i>Vaga disponível agora</span>'
+                : '<span class="admin-waitlist-waiting-badge">Aguardando vaga</span>'}
+            </div>
+            <small>${esc(court?.name || 'Quadra')} · ${esc(bookingFullDateLabel(entry.booking_date))} · ${esc(adminWaitlistTimeLabel(entry))}</small>
+          </div>
+          <div class="admin-waitlist-queue">
+            <span>Posição</span>
+            <strong>${position ? `${position.position}º de ${position.total}` : '—'}</strong>
+          </div>
+          <button type="button" class="admin-waitlist-detail-button" data-admin-waitlist-detail="${entry.id}">
+            Ver detalhes <span aria-hidden="true">→</span>
+          </button>
+        </article>`;
+    }).join('')
+    : `
+      <div class="admin-waitlist-empty">
+        <span class="admin-waitlist-empty-icon" aria-hidden="true">✓</span>
+        <div><strong>Ninguém aguardando vaga nesta data.</strong><small>Quando um jogador entrar na lista de espera, ele aparecerá aqui automaticamente.</small></div>
+      </div>`;
+
+  const historyMarkup = visibleHistory.length
+    ? visibleHistory.map((entry) => {
+      const court = adminWaitlistCourt(entry);
+      const status = adminWaitlistStatusMeta(entry);
+      return `
+        <tr>
+          <td><strong>${esc(compactDateLabel(entry.booking_date))}</strong><small>${esc(dateTimeLabel(entry.created_at))}</small></td>
+          <td>${esc(entry.customer_name)}</td>
+          <td>${esc(court?.name || 'Quadra')}</td>
+          <td>${esc(adminWaitlistTimeLabel(entry))}</td>
+          <td><span class="admin-waitlist-history-status ${status.tone}"><i></i>${esc(status.label)}</span></td>
+          <td><button type="button" class="admin-waitlist-history-detail" data-admin-waitlist-detail="${entry.id}">Ver detalhes</button></td>
+        </tr>`;
+    }).join('')
+    : '<tr><td colspan="6"><div class="admin-waitlist-history-empty">Ainda não há movimentações anteriores na lista de espera.</div></td></tr>';
+
+  panel.innerHTML = `
+    <div class="admin-waitlist-heading">
+      <div>
+        <p class="eyebrow">OPORTUNIDADES DE ENCAIXE</p>
+        <h2>Lista de espera de jogadores</h2>
+        <p>Acompanhe quem está aguardando um horário e veja imediatamente quando a vaga desejada ficar disponível.</p>
+      </div>
+      <span class="admin-waitlist-live"><i></i>Atualização em tempo real</span>
+    </div>
+
+    <div class="admin-waitlist-stats">
+      <article><span class="admin-waitlist-stat-icon">◎</span><div><strong>${activeEntries.length}</strong><small>aguardando nesta data</small></div></article>
+      <article><span class="admin-waitlist-stat-icon available">!</span><div><strong>${availableEntries.length}</strong><small>vaga(s) disponível(is) agora</small></div></article>
+      <article><span class="admin-waitlist-stat-icon notified">↗</span><div><strong>${notifiedToday}</strong><small>notificado(s) hoje</small></div></article>
+    </div>
+
+    <section class="admin-waitlist-current">
+      <div class="admin-waitlist-section-head">
+        <div><h3>Jogadores aguardando</h3><p>${esc(bookingFullDateLabel(day))}</p></div>
+        ${availableEntries.length ? `<span class="admin-waitlist-opportunity">${availableEntries.length} oportunidade${availableEntries.length > 1 ? 's' : ''} de encaixe</span>` : ''}
+      </div>
+      <div class="admin-waitlist-list">${activeMarkup}</div>
+    </section>
+
+    <section class="admin-waitlist-history">
+      <div class="admin-waitlist-section-head">
+        <div><p class="eyebrow">HISTÓRICO</p><h3>Histórico da lista de espera</h3><p>Solicitações notificadas, convertidas ou encerradas ficam registradas aqui.</p></div>
+        <span class="admin-waitlist-history-count">${history.length} registro(s)</span>
+      </div>
+      <div class="admin-waitlist-table-scroll">
+        <table class="admin-waitlist-table">
+          <thead><tr><th>Data</th><th>Jogador</th><th>Quadra</th><th>Horário</th><th>Status</th><th>Ação</th></tr></thead>
+          <tbody>${historyMarkup}</tbody>
+        </table>
+      </div>
+      ${history.length > 5 ? `
+        <div class="admin-waitlist-history-footer">
+          <button type="button" data-admin-waitlist-history-toggle>
+            ${adminWaitlistHistoryExpanded ? 'Mostrar apenas recentes' : 'Ver histórico completo'} <span aria-hidden="true">→</span>
+          </button>
+        </div>` : ''}
+    </section>`;
+}
+
+function renderAdminWaitlistDetail(entryId) {
+  const dialog = $('#adminWaitlistDetailDialog');
+  const content = $('#adminWaitlistDetailContent');
+  if (!dialog || !content) return;
+
+  const entry = adminWaitlistEntries.find((item) => item.id === entryId);
+  if (!entry) return;
+
+  adminWaitlistDetailId = entry.id;
+  const court = adminWaitlistCourt(entry);
+  const status = adminWaitlistStatusMeta(entry);
+  const available = adminWaitlistIsAvailable(entry);
+  const position = adminWaitlistPosition(entry);
+  const estimatedValue = Number(court?.price || 0) * Number(entry.duration || 1);
+  const phone = formatWhatsapp(entry.customer_phone);
+  const whatsappUrl = adminWaitlistCustomerWhatsapp(entry);
+  const waiting = entry.status === 'waiting' && entry.booking_date >= today;
+
+  content.innerHTML = `
+    <div class="admin-waitlist-detail-profile">
+      <span class="admin-waitlist-detail-avatar">${esc(adminWaitlistInitials(entry.customer_name))}</span>
+      <div>
+        <div class="admin-waitlist-detail-name">
+          <h3>${esc(entry.customer_name)}</h3>
+          ${available
+            ? '<span class="admin-waitlist-available-badge"><i></i>Vaga liberada agora</span>'
+            : `<span class="admin-waitlist-history-status ${status.tone}"><i></i>${esc(status.label)}</span>`}
+        </div>
+        <p>${available ? 'Este horário está livre e o jogador pode ser contatado agora.' : 'Detalhes da solicitação registrada na lista de espera.'}</p>
+      </div>
+    </div>
+
+    ${available ? `
+      <div class="admin-waitlist-detail-alert">
+        <span class="admin-waitlist-detail-alert-icon" aria-hidden="true">!</span>
+        <div><strong>Oportunidade de encaixe</strong><p>A vaga escolhida por este jogador está disponível neste momento.</p></div>
+      </div>` : ''}
+
+    <section class="admin-waitlist-detail-card">
+      <div class="admin-waitlist-detail-card-head"><span>CONTATO DO JOGADOR</span></div>
+      <div class="admin-waitlist-detail-line"><span>Nome</span><strong>${esc(entry.customer_name)}</strong></div>
+      <div class="admin-waitlist-detail-line"><span>WhatsApp</span><strong>${esc(phone || entry.customer_phone)}</strong></div>
+      <div class="admin-waitlist-detail-line"><span>Entrou na lista</span><strong>${esc(dateTimeLabel(entry.created_at))}</strong></div>
+    </section>
+
+    <section class="admin-waitlist-detail-card">
+      <div class="admin-waitlist-detail-card-head"><span>POSSÍVEL AGENDAMENTO</span></div>
+      <div class="admin-waitlist-detail-grid">
+        <div><span>Quadra</span><strong>${esc(court?.name || 'Quadra')}</strong><small>${esc(court?.sport || '')}</small></div>
+        <div><span>Data</span><strong>${esc(bookingFullDateLabel(entry.booking_date))}</strong><small>${esc(weekdayLabel(entry.booking_date))}</small></div>
+        <div><span>Horário</span><strong>${esc(adminWaitlistTimeLabel(entry))}</strong><small>${Number(entry.duration)}h de duração</small></div>
+        <div><span>Valor estimado</span><strong>${money(estimatedValue)}</strong><small>conforme valor atual da quadra</small></div>
+      </div>
+      ${position ? `<div class="admin-waitlist-position-note"><span>Posição para este horário</span><strong>${position.position}º de ${position.total}</strong></div>` : ''}
+    </section>
+
+    <section class="admin-waitlist-detail-status">
+      <span>Status atual</span>
+      <strong>${available ? 'Vaga disponível agora' : esc(status.label)}</strong>
+      <p>${available
+        ? 'Entre em contato com o jogador para confirmar se ele ainda deseja o horário.'
+        : waiting
+          ? 'O horário segue ocupado. O sistema continuará acompanhando a disponibilidade.'
+          : 'Esta solicitação já faz parte do histórico da lista de espera.'}</p>
+    </section>
+
+    <div class="admin-waitlist-detail-actions">
+      <a class="admin-waitlist-whatsapp" href="${esc(whatsappUrl)}" target="_blank" rel="noopener noreferrer">
+        <span aria-hidden="true">◉</span> Enviar mensagem via WhatsApp
+      </a>
+      ${waiting ? `
+        <button type="button" class="admin-waitlist-resolve" data-admin-waitlist-status="converted">✓ Marcar como atendido</button>
+        <button type="button" class="admin-waitlist-close-request" data-admin-waitlist-status="cancelled">Encerrar solicitação</button>
+        <small class="admin-waitlist-action-note">Marque como atendido depois que o jogador for encaixado em uma reserva.</small>
+      ` : ''}
+    </div>`;
+
+  if (!dialog.open) dialog.showModal();
+}
+
+async function updateAdminWaitlistStatus(status) {
+  if (!['converted', 'cancelled'].includes(status) || !adminWaitlistDetailId || !arena) return;
+  const entry = adminWaitlistEntries.find((item) => item.id === adminWaitlistDetailId);
+  if (!entry || entry.status !== 'waiting') return;
+
+  if (status === 'cancelled' && !window.confirm('Encerrar esta solicitação da lista de espera? Ela continuará disponível no histórico.')) return;
+
+  const buttons = $('#adminWaitlistDetailContent')?.querySelectorAll('[data-admin-waitlist-status]') || [];
+  buttons.forEach((button) => { button.disabled = true; });
+
+  try {
+    const { error } = await supabase
+      .from('waitlist_entries')
+      .update({ status })
+      .eq('id', entry.id)
+      .eq('arena_id', arena.id)
+      .eq('status', 'waiting');
+    if (error) throw error;
+
+    if ($('#adminWaitlistDetailDialog')?.open) $('#adminWaitlistDetailDialog').close();
+    adminWaitlistDetailId = '';
+    await refreshBookings(false);
+    toast(status === 'converted'
+      ? 'Jogador marcado como atendido e movido para o histórico.'
+      : 'Solicitação encerrada e mantida no histórico.');
+  } catch (error) {
+    console.error(error);
+    toast('Não foi possível atualizar a lista de espera.');
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
 function blockedHoursForDay() {
   return scheduleBlocks.reduce((total, block) => {
     const affectedCourts = block.court === null
@@ -3418,6 +3756,7 @@ function render() {
   const announcementsPanel = $('#announcementsPanel');
   const cashClosingPanel = $('#cashClosingPanel');
   const financeSubnav = $('#financeSubnav');
+  const adminWaitlistPanel = $('#adminWaitlistPanel');
   const publicAnnouncementsPanel = $('#arenaAnnouncementsPublic');
   const settingsPanel = $('#arenaSettingsPanel');
   const partnerSpotlight = $('#partnerSpotlight');
@@ -3426,6 +3765,7 @@ function render() {
   if (announcementsPanel) announcementsPanel.classList.toggle('hidden', !announcementsMode);
   if (cashClosingPanel) cashClosingPanel.classList.toggle('hidden', !(view === 'finance' && financeSection === 'closing' && isAdmin && Boolean(arena)));
   if (financeSubnav) financeSubnav.classList.toggle('hidden', !(view === 'finance' && isAdmin && Boolean(arena)));
+  if (adminWaitlistPanel) adminWaitlistPanel.classList.toggle('hidden', !(view === 'admin' && isAdmin && Boolean(arena)));
   if (publicAnnouncementsPanel) publicAnnouncementsPanel.classList.add('hidden');
   if (settingsPanel) settingsPanel.classList.toggle('hidden', !settingsMode);
   if (partnerSpotlight) partnerSpotlight.classList.add('hidden');
@@ -3636,6 +3976,7 @@ function render() {
     ? pending.map((booking) => `<div class="request-row"><span class="avatar">${esc(booking.name.split(' ').map((part) => part[0]).slice(0, 2).join(''))}</span><div><strong>${esc(booking.name)}</strong><small>${esc(courts[booking.court].name)} · ${booking.hour}:00–${booking.hour + booking.duration}:00 · ${money(bookingTotal(booking))}</small></div><button data-detail="${booking.id}">Ver solicitação</button></div>`).join('')
     : '<div class="empty">Tudo em dia. Nenhuma solicitação pendente nesta data.</div>';
   if (!admin) $('#requests').innerHTML = '';
+  renderAdminWaitlistPanel();
   renderScheduleBlocks();
   const finance = view === 'finance' && isAdmin;
   document.querySelector('.workspace').classList.toggle('hidden', finance);
@@ -3647,6 +3988,48 @@ function render() {
     $('#title').textContent = 'Seu financeiro, em um só lugar.';
     $('#subtitle').textContent = 'Acompanhe receitas e pagamentos por dia, semana ou mês.';
   }
+}
+
+
+const adminWaitlistPanelElement = $('#adminWaitlistPanel');
+const adminWaitlistDetailDialog = $('#adminWaitlistDetailDialog');
+
+if (adminWaitlistPanelElement) {
+  adminWaitlistPanelElement.addEventListener('click', (event) => {
+    const detailButton = event.target.closest('[data-admin-waitlist-detail]');
+    if (detailButton) {
+      renderAdminWaitlistDetail(detailButton.dataset.adminWaitlistDetail);
+      return;
+    }
+
+    const historyToggle = event.target.closest('[data-admin-waitlist-history-toggle]');
+    if (historyToggle) {
+      adminWaitlistHistoryExpanded = !adminWaitlistHistoryExpanded;
+      renderAdminWaitlistPanel();
+    }
+  });
+}
+
+if (adminWaitlistDetailDialog) {
+  $('#closeAdminWaitlistDetail')?.addEventListener('click', () => {
+    adminWaitlistDetailId = '';
+    adminWaitlistDetailDialog.close();
+  });
+
+  adminWaitlistDetailDialog.addEventListener('cancel', () => {
+    adminWaitlistDetailId = '';
+  });
+
+  adminWaitlistDetailDialog.addEventListener('click', (event) => {
+    if (event.target === adminWaitlistDetailDialog) {
+      adminWaitlistDetailId = '';
+      adminWaitlistDetailDialog.close();
+      return;
+    }
+
+    const statusButton = event.target.closest('[data-admin-waitlist-status]');
+    if (statusButton) updateAdminWaitlistStatus(statusButton.dataset.adminWaitlistStatus);
+  });
 }
 
 function openWaitlistDialog(courtIndex, hour) {
