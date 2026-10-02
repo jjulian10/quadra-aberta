@@ -403,6 +403,7 @@
 </span>
 </div>
 </section>
+<section class="admin-waitlist-panel hidden" id="adminWaitlistPanel" aria-live="polite"></section>
 <section class="schedule-blocks hidden" id="blockPanel">
 <div class="section-heading block-heading">
 <div>
@@ -488,6 +489,19 @@
 </div>
 </form>
 </dialog>
+<dialog id="adminWaitlistDetailDialog" class="admin-waitlist-detail-dialog" aria-labelledby="adminWaitlistDetailTitle">
+  <div class="admin-waitlist-detail-shell">
+    <div class="admin-waitlist-detail-head">
+      <div>
+        <p class="eyebrow">LISTA DE ESPERA</p>
+        <h2 id="adminWaitlistDetailTitle">Detalhes do jogador</h2>
+      </div>
+      <button type="button" id="closeAdminWaitlistDetail" class="close admin-waitlist-detail-close" aria-label="Fechar detalhes">×</button>
+    </div>
+    <div id="adminWaitlistDetailContent"></div>
+  </div>
+</dialog>
+
 <dialog id="newArenaDialog" class="master-dialog">
 <form id="newArenaForm">
 <div class="dialog-heading">
