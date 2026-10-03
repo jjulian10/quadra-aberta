@@ -1611,6 +1611,7 @@ function syncAccessControls() {
     arenaContact.hidden = isAdmin || !arena;
     arenaContact.classList.toggle('hidden', isAdmin || !arena);
   }
+  $('#arenaContactTriggerMobile')?.classList.toggle('hidden', isAdmin || !arena);
 
   syncMobileArenaSupport();
 
