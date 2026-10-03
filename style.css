@@ -7052,3 +7052,25 @@ dialog.arena-contact-dialog::backdrop{background:rgba(7,31,24,.58);backdrop-filt
     transform:translateX(2px);
   }
 }
+
+
+/* Modal de contato no desktop com as mesmas proporções compactas do mobile */
+@media(min-width:801px){
+  dialog.arena-contact-dialog{
+    width:min(460px,calc(100vw - 36px));
+    max-height:calc(100dvh - 36px);
+    border-radius:22px;
+  }
+  .arena-contact-dialog-shell{padding:26px 20px 20px}
+  .arena-contact-dialog-shell::before{border-radius:22px 22px 0 0}
+  .arena-contact-dialog-header{grid-template-columns:44px minmax(0,1fr) 34px;gap:11px}
+  .arena-contact-dialog-mark{width:44px;height:44px;border-radius:14px}
+  .arena-contact-dialog-heading h2{font-size:19px}
+  .arena-contact-detail-card{padding:15px;border-radius:16px}
+  .arena-contact-detail-copy strong{font-size:14px}
+  .arena-contact-detail-action svg{
+    width:15px;
+    height:15px;
+    flex:0 0 15px;
+  }
+}
