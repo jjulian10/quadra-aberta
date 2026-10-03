@@ -6949,3 +6949,106 @@ dialog.arena-contact-dialog::backdrop{background:rgba(7,31,24,.58);backdrop-filt
   .arena-contact-trigger,.arena-contact-detail-action{transition:none}
   .arena-contact-dialog[open]{animation:none}
 }
+
+
+/* Acesso de contato minimalista no desktop, conforme prévia aprovada */
+@media(min-width:801px){
+  .arena-footer-contact{
+    position:relative;
+    isolation:auto;
+    width:100%;
+    margin-top:auto;
+    padding:0;
+    overflow:visible;
+    border:0;
+    border-radius:0;
+    background:none;
+    box-shadow:none;
+    display:grid;
+    gap:8px;
+    animation:none;
+  }
+  .arena-footer-contact::before,
+  .arena-footer-contact::after{content:none;display:none}
+  .arena-footer-contact:not([hidden]) + .aside-bottom{margin-top:20px}
+  .arena-contact-heading{display:block;padding:0 1px}
+  .arena-contact-label{
+    color:#91b3a2;
+    font-size:8px;
+    font-weight:800;
+    letter-spacing:.12em;
+    line-height:1.2;
+  }
+  .arena-footer-contact .arena-contact-trigger{
+    grid-template-columns:28px minmax(0,1fr) 18px!important;
+    gap:9px;
+    min-width:0;
+    padding:2px 1px;
+    overflow:visible;
+    border:0!important;
+    border-radius:0;
+    background:transparent!important;
+    color:#eff7f1;
+    text-align:left;
+    box-shadow:none!important;
+    transform:none;
+  }
+  .arena-footer-contact .arena-contact-trigger:hover{
+    color:#c5f277;
+    transform:translateX(2px);
+  }
+  .arena-footer-contact .arena-contact-trigger:focus-visible{
+    outline:2px solid rgba(197,242,119,.65);
+    outline-offset:4px;
+    border-radius:5px;
+  }
+  .arena-contact-trigger-icon{
+    width:28px;
+    height:28px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(197,242,119,.23);
+    border-radius:50%;
+    background:rgba(197,242,119,.09);
+    color:#c5f277;
+    box-shadow:none;
+  }
+  .arena-contact-trigger-icon svg{width:16px;height:16px}
+  .arena-contact-trigger-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
+  .arena-contact-trigger-copy strong{
+    overflow:hidden;
+    color:inherit;
+    font-size:10px;
+    font-weight:750;
+    line-height:1.25;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+  .arena-contact-trigger-copy small{
+    overflow:hidden;
+    color:#91b3a2!important;
+    font-size:8px!important;
+    font-weight:500;
+    line-height:1.2!important;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+  .arena-contact-trigger-arrow{
+    width:18px;
+    height:18px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(197,242,119,.34);
+    border-radius:50%;
+    background:transparent;
+    color:#c5f277;
+    font-size:0;
+    transition:background .2s ease,transform .2s ease;
+  }
+  .arena-contact-trigger-arrow svg{width:12px;height:12px}
+  .arena-contact-trigger:hover .arena-contact-trigger-arrow{
+    background:rgba(197,242,119,.10);
+    color:#d7fb9b;
+    transform:translateX(2px);
+  }
+}
