@@ -6935,7 +6935,7 @@ dialog.arena-contact-dialog::backdrop{background:rgba(7,31,24,.58);backdrop-filt
 .arena-contact-dialog-dismiss{min-width:112px}
 @media(max-width:800px){
   .arena-contact-trigger-mobile:not(.hidden){display:inline-flex!important;align-items:center;gap:8px;min-height:40px;padding:9px 12px;border-radius:11px;font-size:12px}
-  .arena-contact-trigger-mobile:not(.hidden) span{font-size:16px;color:#537c47}
+  .arena-contact-mobile-icon{width:17px;height:17px;flex:0 0 auto;color:#537c47}.arena-contact-detail-action svg{width:15px;height:15px;flex:0 0 auto}
   dialog.arena-contact-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);border-radius:22px}
   .arena-contact-dialog-shell{padding:26px 20px 20px}
   .arena-contact-dialog-shell::before{border-radius:22px 22px 0 0}
