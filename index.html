@@ -116,38 +116,13 @@
 <button data-view="player" class="nav">◷ &nbsp; Visão do jogador</button>
 </nav>
 <div class="arena-footer-contact" id="arenaFooterContact" hidden>
-  <div class="arena-contact-heading">
-    <span class="arena-contact-label">LOCALIZAÇÃO E CONTATO</span>
-    <span class="arena-contact-live" aria-hidden="true"><i></i> Arena selecionada</span>
-  </div>
-
-  <a id="arenaAddressLink" class="arena-contact-action arena-contact-location" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir localização da arena no mapa">
-    <span class="arena-contact-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20 10c0 5.2-8 11-8 11S4 15.2 4 10a8 8 0 1 1 16 0Z"></path>
-        <circle cx="12" cy="10" r="2.6"></circle>
-      </svg>
+  <button class="arena-contact-trigger" id="arenaContactTrigger" type="button" aria-haspopup="dialog" aria-controls="arenaContactDialog">
+    <span class="arena-contact-trigger-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5.2-8 11-8 11S4 15.2 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg>
     </span>
-    <span class="arena-contact-copy">
-      <strong id="arenaAddress">Rua João Pessoa 5611, Nova Esperança | Porto Velho</strong>
-      <small>Ver no mapa</small>
-    </span>
-    <span class="arena-contact-arrow" aria-hidden="true">›</span>
-  </a>
-
-  <a id="arenaPhone" class="arena-contact-action arena-phone" href="https://wa.me/5569992667022" target="_blank" rel="noopener noreferrer">
-    <span class="arena-contact-icon arena-contact-whatsapp-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3 20l1.2-4.7A8.5 8.5 0 1 1 20.5 11.5Z"></path>
-        <path d="M8.8 8.7c.3-.5.6-.5.9-.5h.5c.2 0 .4.1.5.4l.7 1.7c.1.3.1.5-.1.7l-.5.6c-.2.2-.2.4-.1.6.5.9 1.2 1.7 2 2.3.2.1.4.1.6 0l.7-.5c.2-.2.5-.2.7-.1l1.7.8c.3.1.4.3.4.6 0 .4-.1.9-.4 1.3-.4.6-1.2.9-2 .8-1.2-.1-2.8-.8-4.4-2.3-1.8-1.7-2.7-3.5-2.8-4.7-.1-.6.1-1.2.4-1.7Z"></path>
-      </svg>
-    </span>
-    <span class="arena-contact-copy">
-      <strong id="arenaPhoneLabel">(69) 99266-7022 · WhatsApp</strong>
-      <small>Falar com a arena</small>
-    </span>
-    <span class="arena-contact-arrow" aria-hidden="true">›</span>
-  </a>
+    <span class="arena-contact-trigger-copy"><strong>Localização e contato</strong><small>Endereço e WhatsApp da arena</small></span>
+    <span class="arena-contact-trigger-arrow" aria-hidden="true">›</span>
+  </button>
 </div>
 <div class="aside-bottom">
 <span class="demo-pill">SISTEMA ONLINE</span>
@@ -191,6 +166,7 @@
 <p id="subtitle">Todos os horários. Cada reserva. Tudo no seu lugar.</p>
 </div>
 <div class="page-actions">
+<button class="secondary arena-contact-trigger-mobile hidden" id="arenaContactTriggerMobile" type="button" aria-haspopup="dialog" aria-controls="arenaContactDialog"><span aria-hidden="true">⌖</span> Localização e contato</button>
 <button class="secondary hidden" id="retryConnection" type="button">Tentar novamente</button>
 <button class="secondary hidden" id="blockSchedule" type="button">⊘ Bloquear agenda</button>
 <button class="primary hidden" id="newBooking">＋ Nova reserva</button>
@@ -1046,5 +1022,50 @@
 </div>
 <script type="module" src="app.js">
 </script>
+<dialog id="arenaContactDialog" class="arena-contact-dialog" aria-labelledby="arenaContactTitle" aria-describedby="arenaContactDescription">
+  <div class="arena-contact-dialog-shell">
+    <header class="arena-contact-dialog-header">
+      <span class="arena-contact-dialog-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5.2-8 11-8 11S4 15.2 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg>
+      </span>
+      <div class="arena-contact-dialog-heading">
+        <span class="eyebrow">CONTATO DA ARENA</span>
+        <h2 id="arenaContactTitle">Localização e contato</h2>
+      </div>
+      <button class="close arena-contact-dialog-close" id="closeArenaContactDialog" type="button" aria-label="Fechar">×</button>
+    </header>
+    <p class="arena-contact-dialog-intro" id="arenaContactDescription">Encontre a arena ou fale diretamente com a equipe.</p>
+    <section class="arena-contact-detail-card" aria-labelledby="arenaContactAddressHeading">
+      <div class="arena-contact-detail-top">
+        <span class="arena-contact-detail-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5.2-8 11-8 11S4 15.2 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg>
+        </span>
+        <div class="arena-contact-detail-copy">
+          <span class="arena-contact-detail-label" id="arenaContactAddressHeading">ENDEREÇO</span>
+          <strong id="arenaAddress">Endereço da arena</strong>
+          <small>Toque para abrir a rota no mapa</small>
+        </div>
+      </div>
+      <a id="arenaAddressLink" class="arena-contact-detail-action arena-contact-map-action" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir endereço da arena no Google Maps">Abrir no Google Maps <span aria-hidden="true">↗</span></a>
+    </section>
+    <section class="arena-contact-detail-card" id="arenaContactPhoneCard" aria-labelledby="arenaContactPhoneHeading">
+      <div class="arena-contact-detail-top">
+        <span class="arena-contact-detail-icon arena-contact-whatsapp-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3 20l1.2-4.7A8.5 8.5 0 1 1 20.5 11.5Z"></path><path d="M8.8 8.7c.3-.5.6-.5.9-.5h.5c.2 0 .4.1.5.4l.7 1.7c.1.3.1.5-.1.7l-.5.6c-.2.2-.2.4-.1.6.5.9 1.2 1.7 2 2.3.2.1.4.1.6 0l.7-.5c.2-.2.5-.2.7-.1l1.7.8c.3.1.4.3.4.6 0 .4-.1.9-.4 1.3-.4.6-1.2.9-2 .8-1.2-.1-2.8-.8-4.4-2.3-1.8-1.7-2.7-3.5-2.8-4.7-.1-.6.1-1.2.4-1.7Z"></path></svg>
+        </span>
+        <div class="arena-contact-detail-copy">
+          <span class="arena-contact-detail-label" id="arenaContactPhoneHeading">WHATSAPP DA ARENA</span>
+          <strong id="arenaPhoneLabel">(69) 99266-7022 · WhatsApp</strong>
+          <small>Atendimento direto com a equipe da arena</small>
+        </div>
+      </div>
+      <a id="arenaPhone" class="arena-contact-detail-action arena-contact-whatsapp-action" href="#" target="_blank" rel="noopener noreferrer">Conversar pelo WhatsApp <span aria-hidden="true">↗</span></a>
+    </section>
+    <footer class="arena-contact-dialog-footer">
+      <small>Os links abrem em uma nova página.</small>
+      <button class="secondary arena-contact-dialog-dismiss" id="dismissArenaContactDialog" type="button">Fechar</button>
+    </footer>
+  </div>
+</dialog>
 </body>
 </html>

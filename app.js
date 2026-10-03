@@ -543,6 +543,7 @@ function clearArenaIdentity() {
 
   const footer = $('#arenaFooterContact');
   if (footer) footer.hidden = true;
+  $('#arenaContactTriggerMobile')?.classList.add('hidden');
   syncMobileArenaSupport();
 }
 
@@ -582,9 +583,11 @@ function renderArenaIdentity() {
 
   const phoneLink = $('#arenaPhone');
   const phoneLabel = $('#arenaPhoneLabel');
+  const phoneCard = $('#arenaContactPhoneCard');
   const whatsappDigits = arenaWhatsappDigits();
   if (phoneLink) {
     phoneLink.hidden = !whatsappDigits;
+    if (phoneCard) phoneCard.hidden = !whatsappDigits;
     if (whatsappDigits) {
       phoneLink.href = `https://wa.me/${whatsappDigits}`;
       phoneLink.setAttribute('aria-label', `Falar com ${arenaName} pelo WhatsApp`);
@@ -597,6 +600,7 @@ function renderArenaIdentity() {
     footer.hidden = isAdmin;
     footer.classList.toggle('hidden', isAdmin);
   }
+  $('#arenaContactTriggerMobile')?.classList.toggle('hidden', isAdmin);
   syncMobileArenaSupport();
 
   if ($('#breadcrumbArena')) $('#breadcrumbArena').textContent = arenaName;
@@ -6738,6 +6742,19 @@ async function initialize() {
     retryButton.disabled = false;
   }
 }
+
+const arenaContactDialog = $('#arenaContactDialog');
+const openArenaContactDialog = () => {
+  if (!arena || isAdmin || !arenaContactDialog || arenaContactDialog.open) return;
+  arenaContactDialog.showModal();
+};
+$('#arenaContactTrigger')?.addEventListener('click', openArenaContactDialog);
+$('#arenaContactTriggerMobile')?.addEventListener('click', openArenaContactDialog);
+$('#closeArenaContactDialog')?.addEventListener('click', () => arenaContactDialog?.close());
+$('#dismissArenaContactDialog')?.addEventListener('click', () => arenaContactDialog?.close());
+arenaContactDialog?.addEventListener('click', (event) => {
+  if (event.target === arenaContactDialog) arenaContactDialog.close();
+});
 
 $('#retryConnection').addEventListener('click', initialize);
 initialize();

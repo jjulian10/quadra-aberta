@@ -6852,3 +6852,100 @@ body.admin-session .admin-user-name:not(.hidden){
   .admin-waitlist-row,.admin-waitlist-detail-button,.admin-waitlist-history-detail,
   .admin-waitlist-history-footer button,.admin-waitlist-detail-actions>a,.admin-waitlist-detail-actions>button{transition:none}
 }
+
+
+/* Modal público de localização e contato */
+.arena-contact-trigger{
+  position:relative;
+  display:grid!important;
+  grid-template-columns:40px minmax(0,1fr) 22px;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  min-width:0;
+  padding:11px 10px;
+  border:1px solid rgba(182,225,190,.13);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(255,255,255,.075),rgba(255,255,255,.025));
+  color:#eaf5ee;
+  text-align:left;
+  cursor:pointer;
+  transition:transform .2s ease,border-color .2s ease,background .2s ease;
+}
+.arena-contact-trigger:hover,.arena-contact-trigger:focus-visible{
+  transform:translateY(-1px);
+  border-color:rgba(197,242,119,.55);
+  background:rgba(255,255,255,.09);
+  outline:none;
+}
+.arena-contact-trigger-icon{
+  display:grid;
+  place-items:center;
+  width:40px;height:40px;
+  border:1px solid rgba(182,225,190,.18);
+  border-radius:12px;
+  background:rgba(197,242,119,.10);
+  color:#c5f277;
+}
+.arena-contact-trigger-icon svg{width:19px;height:19px}
+.arena-contact-trigger-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.arena-contact-trigger-copy strong{color:#f3f8f5;font-size:11px;font-weight:800;line-height:1.3}
+.arena-contact-trigger-copy small{color:#9cbaaa!important;font-size:9px!important;line-height:1.3!important}
+.arena-contact-trigger-arrow{display:grid;place-items:center;width:22px;height:22px;border:1px solid #ffffff1c;border-radius:50%;color:#c5f277;font-size:19px}
+.arena-contact-trigger-mobile{display:none!important}
+dialog.arena-contact-dialog{
+  width:min(620px,calc(100vw - 28px));
+  max-width:none;
+  max-height:min(90dvh,820px);
+  overflow:auto;
+  padding:0;
+  border:1px solid #dce9df;
+  border-radius:26px;
+  background:#fff;
+  color:#17362d;
+  box-shadow:0 28px 90px rgba(5,34,25,.30);
+}
+dialog.arena-contact-dialog::backdrop{background:rgba(7,31,24,.58);backdrop-filter:blur(4px)}
+.arena-contact-dialog[open]{animation:arenaContactModalIn .24s cubic-bezier(.2,.8,.2,1) both}
+@keyframes arenaContactModalIn{from{opacity:0;transform:translateY(9px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.arena-contact-dialog-shell{position:relative;padding:30px 32px 25px}
+.arena-contact-dialog-shell::before{content:"";position:absolute;left:0;right:0;top:0;height:8px;border-radius:26px 26px 0 0;background:linear-gradient(90deg,#aee968,#d0f68f,#95d765)}
+.arena-contact-dialog-header{display:grid;grid-template-columns:52px minmax(0,1fr) 36px;align-items:center;gap:15px}
+.arena-contact-dialog-mark{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;background:#eef7e8;color:#4e7c45}
+.arena-contact-dialog-mark svg{width:24px;height:24px}
+.arena-contact-dialog-heading .eyebrow{margin:0 0 5px;font-size:9px;letter-spacing:1.4px;color:#64816d}
+.arena-contact-dialog-heading h2{margin:0;font:800 23px/1.2 Manrope,sans-serif;letter-spacing:-.55px;color:#17362d}
+.arena-contact-dialog-close{display:grid;place-items:center;width:34px;height:34px;padding:0;font-size:23px}
+.arena-contact-dialog-intro{margin:18px 0 21px;font-size:13px;color:#72837a}
+.arena-contact-detail-card{margin-top:12px;padding:20px;border:1px solid #e0eae2;border-radius:18px;background:linear-gradient(145deg,#fbfdfb,#f6faf6);box-shadow:inset 0 1px 0 #fff}
+.arena-contact-detail-top{display:grid;grid-template-columns:46px minmax(0,1fr);align-items:start;gap:14px}
+.arena-contact-detail-icon{display:grid;place-items:center;width:46px;height:46px;border:1px solid #dcebd9;border-radius:14px;background:#edf6e8;color:#4f8049}
+.arena-contact-detail-icon svg{width:21px;height:21px}
+.arena-contact-whatsapp-mark{color:#238d55;background:#e8f6ec;border-color:#d5ebdc}
+.arena-contact-detail-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.arena-contact-detail-label{font-size:9px;font-weight:800;letter-spacing:1.05px;color:#74877c}
+.arena-contact-detail-copy strong{display:block;min-width:0;color:#18392e;font-size:15px;font-weight:800;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
+.arena-contact-detail-copy small{color:#74877c;font-size:10px;line-height:1.4}
+.arena-contact-detail-action{display:flex;align-items:center;justify-content:center;gap:8px;min-height:43px;margin-top:17px;padding:10px 14px;border:1px solid transparent;border-radius:11px;text-decoration:none;font-size:12px;font-weight:800;transition:transform .18s ease,filter .18s ease}
+.arena-contact-detail-action:hover{transform:translateY(-1px);filter:brightness(1.03)}
+.arena-contact-map-action{background:#12372e;color:#fff}
+.arena-contact-whatsapp-action{background:#edf7e9;color:#35613c;border-color:#d9ebd0}
+.arena-contact-dialog-footer{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-top:20px}
+.arena-contact-dialog-footer small{font-size:10px;color:#74877c}
+.arena-contact-dialog-dismiss{min-width:112px}
+@media(max-width:800px){
+  .arena-contact-trigger-mobile:not(.hidden){display:inline-flex!important;align-items:center;gap:8px;min-height:40px;padding:9px 12px;border-radius:11px;font-size:12px}
+  .arena-contact-trigger-mobile:not(.hidden) span{font-size:16px;color:#537c47}
+  dialog.arena-contact-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);border-radius:22px}
+  .arena-contact-dialog-shell{padding:26px 20px 20px}
+  .arena-contact-dialog-shell::before{border-radius:22px 22px 0 0}
+  .arena-contact-dialog-header{grid-template-columns:44px minmax(0,1fr) 34px;gap:11px}
+  .arena-contact-dialog-mark{width:44px;height:44px;border-radius:14px}
+  .arena-contact-dialog-heading h2{font-size:19px}
+  .arena-contact-detail-card{padding:15px;border-radius:16px}
+  .arena-contact-detail-copy strong{font-size:14px}
+}
+@media(prefers-reduced-motion:reduce){
+  .arena-contact-trigger,.arena-contact-detail-action{transition:none}
+  .arena-contact-dialog[open]{animation:none}
+}
